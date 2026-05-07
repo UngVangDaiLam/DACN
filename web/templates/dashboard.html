@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}SOC Dashboard - DroidGuard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="text-white fw-bold mb-0"><i class="fas fa-chart-network text-info me-2"></i> Security Analytics</h2>
+            <p class="text-light mt-1" style="opacity: 0.8;">Giám sát phân tích hệ thống thời gian thực</p>
+        </div>
+        <button class="btn btn-outline-info" onclick="refreshDash()"><i class="fas fa-sync-alt me-2"></i> Làm mới</button>
+    </div>
+
+    <!-- 3 Thẻ Thông số -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card p-4 h-100 border-0" style="border-left: 4px solid var(--neon-cyan) !important;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="p-3 rounded-3" style="background: rgba(34,211,238,0.1);">
+                        <i class="fas fa-radar fa-2x text-info glow-icon"></i>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="text-info mb-1 text-uppercase fw-bold" style="letter-spacing: 1px; font-size: 0.8rem;">Tổng Lượt Quét</p>
+                    <h1 class="display-4 fw-bold text-white mb-0" id="dash-total-scans">0</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-4 h-100 border-0" style="border-left: 4px solid var(--neon-purple) !important;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="p-3 rounded-3" style="background: rgba(168,85,247,0.1);">
+                        <i class="fas fa-microchip fa-2x glow-icon" style="color: var(--neon-purple);"></i>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="mb-1 text-uppercase fw-bold" style="color: var(--neon-purple); letter-spacing: 1px; font-size: 0.8rem;">Mẫu Đã Phân Tích</p>
+                    <h1 class="display-4 fw-bold text-white mb-0" id="dash-total-samples">0</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-4 h-100 border-0" style="background: linear-gradient(135deg, var(--card-glass), rgba(244,63,94,0.05)); border-left: 4px solid var(--neon-red) !important;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="p-3 rounded-3" style="background: rgba(244,63,94,0.1);">
+                        <i class="fas fa-skull-crossbones fa-2x text-danger glow-icon"></i>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="text-danger mb-1 text-uppercase fw-bold" style="letter-spacing: 1px; font-size: 0.8rem;">Tỷ Lệ Đe Dọa Nhận Diện</p>
+                    <h1 class="display-4 fw-bold text-gradient-danger mb-0"><span id="dash-detection-rate">0</span>%</h1>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Khu vực Biểu đồ -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-5">
+            <div class="card p-4 h-100">
+                <h5 class="text-white mb-4"><i class="fas fa-chart-pie text-info me-2"></i> Phân Bố Mã Độc</h5>
+                <div style="height: 300px;"><canvas id="malwareChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card p-4 h-100">
+                <h5 class="text-white mb-4"><i class="fas fa-chart-line text-info me-2"></i> Xu Hướng Rủi Ro</h5>
+                <div style="height: 300px;"><canvas id="trendChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bảng 10 lần quét gần nhất -->
+    <div class="row g-4 mt-2">
+        <div class="col-12">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="text-white mb-0"><i class="fas fa-history text-info me-2"></i> Nhật Ký Quét Gần Đây</h5>
+                    <a href="/history" class="btn btn-sm btn-outline-info">Xem tất cả</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-borderless align-middle text-white mb-0" style="background: transparent;">
+                        <thead style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <tr>
+                                <th class="text-light text-uppercase small pb-3" style="opacity: 0.8;">Thời gian</th>
+                                <th class="text-light text-uppercase small pb-3" style="opacity: 0.8;">Tên file/Đối tượng</th>
+                                <th class="text-light text-uppercase small text-center pb-3" style="opacity: 0.8;">Số mẫu</th>
+                                <th class="text-light text-uppercase small pb-3" style="opacity: 0.8;">Nhận diện AI</th>
+                                <th class="text-light text-uppercase small text-end pb-3" style="opacity: 0.8;">Độ tin cậy</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table">
+                            <!-- Render bằng JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    /* Ép nền bảng thành màu trong suốt, tắt các sọc màu xám sáng mặc định của Bootstrap */
+    #history-table tr {
+        background-color: transparent !important;
+        transition: all 0.3s ease;
+    }
+    
+    /* Hiệu ứng highlight rực rỡ khi di chuột qua hàng (hover) */
+    #history-table tr:hover {
+        background-color: rgba(34, 211, 238, 0.05) !important;
+        box-shadow: inset 2px 0 0 0 var(--neon-cyan);
+    }
+
+    /* Đảm bảo chữ trong các cột không bị làm mờ bởi các class mặc định */
+    #history-table td {
+        color: #e2e8f0 !important;
+        vertical-align: middle;
+    }
+    
+    /* Làm nổi bật cột Tên File */
+    #history-table td:nth-child(2) {
+        color: var(--neon-cyan, #00f3ff) !important;
+    }
+</style>
+<script>
+(function() {
+    let malwareChartInst, trendChartInst;
+
+    function formatTs(ts) {
+        if (!ts) return '';
+        if (typeof ts === 'string' && ts.includes('T')) {
+            try { const d = new Date(ts); if (!isNaN(d.getTime())) return d.toLocaleString('vi-VN'); } catch (e) {}
+        }
+        return String(ts).replace('T', ' ').slice(0, 19);
+    }
+    function escAttr(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    function riskBadgeStyle(h) {
+        const rl = (h.first_sample && h.first_sample.risk_level) ? h.first_sample.risk_level : '';
+        if (rl === 'Rất cao' || rl === 'Cao') return 'background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.4);';
+        if (rl === 'Trung bình') return 'background: rgba(250, 204, 21, 0.15); color: #fef08a; border: 1px solid rgba(250, 204, 21, 0.4);';
+        return 'background: rgba(74, 222, 128, 0.15); color: #bbf7d0; border: 1px solid rgba(74, 222, 128, 0.4);';
+    }
+
+    function renderHistoryTable(history) {
+        const tbody = document.getElementById('history-table');
+        tbody.innerHTML = '';
+        
+        if (history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Chưa có dữ liệu phân tích.</td></tr>';
+            return;
+        }
+
+        history.slice(0, 10).forEach(function(h) {
+            const fs = h.first_sample || {};
+            const icon = fs.icon || '📊';
+            const name = fs.name || '—';
+            const conf = (fs.confidence !== undefined && fs.confidence !== null) ? fs.confidence : '—';
+            
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            tr.innerHTML = `
+                <td class="text-light small py-3" style="opacity:0.8;">${escAttr(formatTs(h.timestamp))}</td>
+                <td class="fw-bold py-3 text-white"><i class="fas fa-file-code me-2" style="color:var(--neon-cyan); opacity:0.7;"></i>${escAttr(h.filename || '')}</td>
+                <td class="text-center py-3"><span class="badge" style="background: rgba(255,255,255,0.1); color:white; border: 1px solid rgba(255,255,255,0.2);">${escAttr(String(h.total_samples || 0))}</span></td>
+                <td class="py-3"><span class="badge px-3 py-2 rounded-pill fw-bold" style="${riskBadgeStyle(h)}">${escAttr(icon)} ${escAttr(name)}</span></td>
+                <td class="text-end fw-bold py-3 text-gradient fs-5">${escAttr(String(conf))}%</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function getHistory() { return JSON.parse(localStorage.getItem('malware_scan_history') || '[]'); }
+
+    window.refreshDash = function() {
+        const history = getHistory();
+        let totalScans = history.length, totalSamples = 0, malwareSamples = 0;
+
+        history.forEach(h => {
+            totalSamples += (h.total_samples || 1);
+            if(h.first_sample && h.first_sample.class !== '1') malwareSamples += (h.total_samples || 1);
+        });
+
+        document.getElementById('dash-total-scans').innerText = totalScans;
+        document.getElementById('dash-total-samples').innerText = totalSamples;
+        document.getElementById('dash-detection-rate').innerText = totalSamples > 0 ? Math.round((malwareSamples/totalSamples)*100) : 0;
+
+        drawCharts(history);
+        renderHistoryTable(history);
+    };
+
+    function drawCharts(history) {
+        Chart.defaults.color = '#94a3b8'; 
+        Chart.defaults.font.family = "'Space Grotesk', sans-serif";
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+
+        let stats = {'1':0, '2':0, '3':0, '4':0, '5':0};
+        history.forEach(h => {
+            if(h.statistics) { Object.keys(h.statistics).forEach(k => { if(stats[k]!==undefined) stats[k] += h.statistics[k].count; }); }
+            else if(h.first_sample && h.first_sample.class) stats[h.first_sample.class]++;
+        });
+
+        const ctx1 = document.getElementById('malwareChart').getContext('2d');
+        if(malwareChartInst) malwareChartInst.destroy();
+        malwareChartInst = new Chart(ctx1, {
+            type: 'doughnut',
+            data: {
+                labels: ['Benign', 'Adware', 'Banking', 'SMS', 'Riskware'],
+                datasets: [{
+                    data: [stats['1'], stats['2'], stats['3'], stats['4'], stats['5']],
+                    backgroundColor: ['#4ade80', '#facc15', '#a855f7', '#f43f5e', '#fb923c'],
+                    borderWidth: 0, hoverOffset: 10
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#f1f5f9', padding: 20 } } }, cutout: '75%' }
+        });
+
+        const ctx2 = document.getElementById('trendChart').getContext('2d');
+        if(trendChartInst) trendChartInst.destroy();
+        trendChartInst = new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: history.slice(0,10).reverse().map(h => (h.filename||'').substring(0,8)+'...'),
+                datasets: [{
+                    label: 'Độ tin cậy AI (%)',
+                    data: history.slice(0,10).reverse().map(h => h.first_sample?.confidence || 0),
+                    borderColor: '#22d3ee', backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                    borderWidth: 3, fill: true, tension: 0.4,
+                    pointBackgroundColor: '#020617', pointBorderColor: '#22d3ee',
+                    pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                scales: { 
+                    y: { beginAtZero: true, max: 100, ticks: { color: '#94a3b8' } },
+                    x: { ticks: { color: '#94a3b8' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    $(document).ready(function() {
+        refreshDash();
+        window.addEventListener('storage', function(ev) { if (ev.key === 'malware_scan_history' || ev.key === null) refreshDash(); });
+        window.addEventListener('malware-history-updated', refreshDash);
+    });
+})();
+</script>
+{% endblock %}

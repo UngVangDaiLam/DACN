@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Giới thiệu - DroidGuard AI{% endblock %}
+
+{% block content %}
+<div class="container fade-in">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card p-2 border-0" style="background: var(--card-glass); border-top: 2px solid var(--neon-green) !important;">
+                <div class="card-header bg-transparent border-bottom border-secondary pt-4 pb-3">
+                    <h4 class="mb-0 text-white">
+                        <i class="fas fa-microchip text-success me-2"></i> Thông Số Kiến Trúc Hệ Thống
+                    </h4>
+                </div>
+                <div class="card-body text-light">
+                    <h5 class="text-white"><i class="fas fa-server text-info me-2"></i> Lõi Hệ Thống</h5>
+                    <p style="opacity: 0.8;">
+                        Hệ thống phát hiện và phân loại mã độc Android sử dụng Machine Learning (Random Forest & XGBoost Classifier) với độ chính xác đạt <strong class="text-gradient">94.4%</strong>. 
+                    </p>
+                    
+                    <h5 class="mt-4 text-white"><i class="fas fa-database text-warning me-2"></i> Dataset Huấn Luyện</h5>
+                    <p style="opacity: 0.8;">Khởi tạo từ bộ dữ liệu <strong>CICMalDroid2020</strong> (Viện An ninh mạng Canada - CIC):</p>
+                    <ul class="list-group list-group-flush mb-3 rounded" style="background: rgba(255,255,255,0.05);">
+                        <li class="list-group-item bg-transparent text-light border-secondary"><i class="fas fa-check text-success me-2"></i> 11,598 ứng dụng đã được dán nhãn</li>
+                        <li class="list-group-item bg-transparent text-light border-secondary"><i class="fas fa-check text-success me-2"></i> Trích xuất 470 vector đặc trưng (API calls, Intents, Permissions)</li>
+                        <li class="list-group-item bg-transparent text-light border-0"><i class="fas fa-check text-success me-2"></i> Phân loại đa lớp (Benign, Adware, Banking, SMS, Riskware)</li>
+                    </ul>
+                    
+                    <h5 class="mt-4 text-white"><i class="fas fa-chart-line text-danger me-2"></i> Hiệu Năng Đạt Được</h5>
+                    <div class="row text-center mt-4 mb-4">
+                        <div class="col-md-4">
+                            <div class="display-4 fw-bold text-gradient">94.4%</div>
+                            <p class="text-uppercase small mt-2" style="opacity: 0.7;">Độ chính xác (Accuracy)</p>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="display-4 fw-bold text-white">5</div>
+                            <p class="text-uppercase small mt-2" style="opacity: 0.7;">Lớp mã độc (Classes)</p>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="display-4 fw-bold" style="color: var(--neon-purple);">11.5K</div>
+                            <p class="text-uppercase small mt-2" style="opacity: 0.7;">Mẫu huấn luyện</p>
+                        </div>
+                    </div>
+                    
+                    <hr style="border-top: 1px solid rgba(255,255,255,0.2);">
+                    
+                    <div class="text-center mt-4">
+                        <a href="/scan" class="btn btn-cyber px-5 py-2">
+                            <i class="fas fa-terminal me-2"></i> Kích hoạt Module Quét
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

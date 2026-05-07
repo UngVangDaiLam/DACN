@@ -1,0 +1,83 @@
+[
+  {
+    "id": "ede75905-733c-4f6a-afa5-8c23087537b2",
+    "filename": "feature_vectors_syscallsbinders_frequency_5_Cat.csv",
+    "timestamp": "2026-04-13T18:54:05.625912",
+    "total_samples": 11598,
+    "statistics": {
+      "1": {
+        "count": 1272,
+        "percentage": 10.97,
+        "info": {
+          "name": "Benign (An toàn)",
+          "icon": "🟢",
+          "color": "#28a745",
+          "bg": "#d4edda",
+          "risk_level": "Thấp",
+          "risk_score": 10,
+          "description": "Ứng dụng an toàn, không chứa mã độc hoặc hành vi nguy hiểm."
+        }
+      },
+      "2": {
+        "count": 2067,
+        "percentage": 17.82,
+        "info": {
+          "name": "Adware (Quảng cáo độc hại)",
+          "icon": "📢",
+          "color": "#ffc107",
+          "bg": "#fff3cd",
+          "risk_level": "Trung bình",
+          "risk_score": 45,
+          "description": "Ứng dụng hiển thị quảng cáo gây khó chịu, có thể nhấp chuột tự động và tốn pin."
+        }
+      },
+      "3": {
+        "count": 3933,
+        "percentage": 33.91,
+        "info": {
+          "name": "Banking Malware (Mã độc ngân hàng)",
+          "icon": "🏦",
+          "color": "#dc3545",
+          "bg": "#f8d7da",
+          "risk_level": "Rất cao",
+          "risk_score": 95,
+          "description": "MÃ ĐỘC NGUY HIỂM! Đánh cắp thông tin đăng nhập ngân hàng, thẻ tín dụng, và dữ liệu tài chính."
+        }
+      },
+      "4": {
+        "count": 2512,
+        "percentage": 21.66,
+        "info": {
+          "name": "SMS Malware (Mã độc tin nhắn)",
+          "icon": "💬",
+          "color": "#dc3545",
+          "bg": "#f8d7da",
+          "risk_level": "Rất cao",
+          "risk_score": 90,
+          "description": "MÃ ĐỘC NGUY HIỂM! Tự động gửi tin nhắn SMS đến số cao cấp, gây mất tiền trong tài khoản điện thoại."
+        }
+      },
+      "5": {
+        "count": 1814,
+        "percentage": 15.64,
+        "info": {
+          "name": "Riskware (Phần mềm rủi ro)",
+          "icon": "⚠️",
+          "color": "#fd7e14",
+          "bg": "#ffe5d0",
+          "risk_level": "Trung bình - Cao",
+          "risk_score": 60,
+          "description": "Phần mềm có hành vi không mong muốn, tiềm ẩn rủi ro bảo mật hoặc xâm phạm quyền riêng tư."
+        }
+      }
+    },
+    "overall_risk": "critical",
+    "first_sample": {
+      "class": "1",
+      "name": "Benign (An toàn)",
+      "confidence": 71.39,
+      "icon": "🟢",
+      "risk_level": "Thấp"
+    }
+  }
+]

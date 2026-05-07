@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Trang chủ - DroidGuard AI{% endblock %}
+
+{% block content %}
+<div class="container fade-in">
+    <div class="row align-items-center min-vh-80 pt-4">
+        <div class="col-lg-7 mb-5">
+            <div class="badge mb-4 px-4 py-2" style="background: rgba(34,211,238,0.05); border: 1px solid rgba(34,211,238,0.2); border-radius: 20px; box-shadow: 0 0 10px rgba(34,211,238,0.1);">
+                <i class="fas fa-microchip me-2" style="color: var(--neon-cyan);"></i> 
+                <span class="text-info fw-bold" style="letter-spacing: 1px;">XGBOOST NEURAL CORE V1.0</span>
+            </div>
+            
+            <h1 class="display-3 fw-bold mb-4 text-white" style="text-shadow: 0 0 20px rgba(255,255,255,0.1);">
+                Phát hiện Mã độc <br>
+                <span class="text-gradient">Android Thế Hệ Mới</span>
+            </h1>
+            
+            <p class="lead text-light mb-5" style="font-size: 1.15rem; max-width: 90%; opacity: 0.85; line-height: 1.8;">
+                Nền tảng phân tích tĩnh và phân loại phần mềm độc hại tự động. Tích hợp AI Core để bảo vệ hệ thống trước các mối đe dọa Zero-day.
+            </p>
+            
+            <div class="d-flex gap-3">
+                <a href="/scan" class="btn btn-cyber px-5 py-3 fs-5 shadow-lg d-flex align-items-center">
+                    <i class="fas fa-radar me-2 fs-4"></i> Khởi động Quét
+                </a>
+                <a href="/dashboard" class="btn btn-outline-secondary text-white px-5 py-3 fs-5" style="border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); border-radius: 12px; transition: 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i class="fas fa-chart-network me-2"></i> Xem Thống kê
+                </a>
+            </div>
+        </div>
+        
+        <div class="col-lg-5">
+            <div class="card p-5 border-0" style="background: linear-gradient(145deg, rgba(15,23,42,0.8), rgba(2,6,23,0.9)); border-top: 2px solid var(--neon-cyan) !important;">
+                <div class="text-center mb-4">
+                    <div class="d-inline-block p-4 rounded-circle mb-3 glow-icon" style="background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.3);">
+                        <i class="fas fa-database fa-3x text-info"></i>
+                    </div>
+                    <h3 class="text-white">Core Dataset</h3>
+                </div>
+                
+                <div class="d-flex justify-content-between border-bottom border-secondary pb-3 mb-3">
+                    <span class="text-light" style="opacity: 0.8;"><i class="fas fa-link text-info me-2"></i>Nguồn dữ liệu</span>
+                    <strong class="text-white">CICMalDroid 2020</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom border-secondary pb-3 mb-3">
+                    <span class="text-light" style="opacity: 0.8;"><i class="fas fa-vial text-info me-2"></i>Tổng số mẫu</span>
+                    <strong class="text-gradient fs-5 fw-bold">11,598</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-light" style="opacity: 0.8;"><i class="fas fa-code-branch text-info me-2"></i>Vector đặc trưng</span>
+                    <strong class="text-gradient fs-5 fw-bold">470</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row g-4 mt-2 mb-5">
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-4 border-0" style="background: linear-gradient(to bottom, rgba(74, 222, 128, 0.05), transparent); border-bottom: 2px solid var(--neon-green) !important;">
+                <div class="display-4 mb-3 glow-icon" style="text-shadow: 0 0 20px var(--neon-green);">🟢</div>
+                <h5 class="text-white fw-bold">Benign</h5>
+                <p class="text-light small mb-0" style="opacity: 0.7;">Ứng dụng an toàn</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-4 border-0" style="background: linear-gradient(to bottom, rgba(250, 204, 21, 0.05), transparent); border-bottom: 2px solid #facc15 !important;">
+                <div class="display-4 mb-3 glow-icon" style="text-shadow: 0 0 20px #facc15;">📢</div>
+                <h5 class="text-white fw-bold">Adware</h5>
+                <p class="text-light small mb-0" style="opacity: 0.7;">Quảng cáo độc hại</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-4 border-0" style="background: linear-gradient(to bottom, rgba(168, 85, 247, 0.05), transparent); border-bottom: 2px solid var(--neon-purple) !important;">
+                <div class="display-4 mb-3 glow-icon" style="text-shadow: 0 0 20px var(--neon-purple);">🏦</div>
+                <h5 class="text-white fw-bold">Banking</h5>
+                <p class="text-light small mb-0" style="opacity: 0.7;">Mã độc tài chính</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-4 border-0" style="background: linear-gradient(to bottom, rgba(244, 63, 94, 0.05), transparent); border-bottom: 2px solid var(--neon-red) !important;">
+                <div class="display-4 mb-3 glow-icon" style="text-shadow: 0 0 20px var(--neon-red);">💬</div>
+                <h5 class="text-white fw-bold">SMS / Riskware</h5>
+                <p class="text-light small mb-0" style="opacity: 0.7;">Đánh cắp quyền riêng tư</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

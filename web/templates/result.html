@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kết quả quét mã độc</title>
+    <meta charset="UTF-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        
+        .file-info {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 20px 0;
+            color: #666;
+        }
+        
+        .result-safe {
+            background: #d4edda;
+            color: #155724;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border: 2px solid #28a745;
+        }
+        
+        .result-warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border: 2px solid #ffc107;
+        }
+        
+        .result-danger {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border: 2px solid #dc3545;
+        }
+        
+        .confidence {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        
+        .icon {
+            font-size: 64px;
+            margin-bottom: 10px;
+        }
+        
+        .message {
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 10px;
+            margin-top: 20px;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn:hover {
+            background: #5a67d8;
+            transform: scale(1.05);
+        }
+        
+        .class-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 KẾT QUẢ PHÂN TÍCH</h1>
+        
+        <div class="file-info">
+            📄 File: <strong>{{ filename }}</strong>
+        </div>
+        
+        <div class="result-{{ result_status }}">
+            <div class="icon">{{ icon }}</div>
+            <h2>{{ result_text }}</h2>
+            <div class="class-name">📌 Loại: {{ class_name }}</div>
+            <div class="confidence">🎯 Độ tin cậy: {{ confidence }}%</div>
+            <div class="message">{{ message }}</div>
+        </div>
+        
+        <a href="/" class="btn">🔄 Quét file khác</a>
+    </div>
+</body>
+</html>

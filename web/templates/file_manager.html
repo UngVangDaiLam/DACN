@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}File Manager - DroidGuard{% endblock %}
+
+{% block content %}
+<div class="row fade-in">
+    <div class="col-12">
+        <div class="card border-0" style="border-top: 2px solid var(--neon-cyan) !important;">
+            <div class="card-header bg-transparent border-bottom border-secondary pt-4 pb-3">
+                <h4 class="mb-0 text-white"><i class="fas fa-folder-open text-info me-2"></i> File Manager - Quản Lý Đối Tượng Quét</h4>
+            </div>
+            <div class="card-body">
+                <!-- Upload Section -->
+                <div class="p-4 rounded-3 mb-4" style="background: rgba(34, 211, 238, 0.05); border: 1px solid rgba(34, 211, 238, 0.2);">
+                    <form id="uploadForm" enctype="multipart/form-data" class="row g-3 align-items-center">
+                        <div class="col-auto flex-grow-1">
+                            <input type="file" class="form-control bg-dark text-light border-secondary" id="uploadFile" name="file" required>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-cyber px-4">
+                                <i class="fas fa-upload me-1"></i> Đẩy File Lên Server
+                            </button>
+                        </div>
+                    </form>
+                    <div id="uploadProgress" style="display: none;" class="mt-3">
+                        <div class="progress" style="height: 6px; background: #222;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width: 100%"></div>
+                        </div>
+                        <small class="text-info mt-1 d-block"><i class="fas fa-circle-notch fa-spin me-1"></i> Đang truyền dữ liệu vào vùng cách ly...</small>
+                    </div>
+                    <small class="text-light mt-2 d-block" style="opacity: 0.6;"><i class="fas fa-info-circle text-info"></i> Hỗ trợ file .CSV và .APK. Dữ liệu sẽ được lưu tự động vào <code>/scans/</code></small>
+                </div>
+                
+                <!-- Tabs -->
+                <ul class="nav nav-pills mb-4 gap-2 border-bottom border-secondary pb-3" id="fileTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active btn-cyber border-0 py-2 px-4" data-bs-toggle="tab" data-bs-target="#csvFiles" type="button">
+                            <i class="fas fa-file-csv me-1"></i> CSV Files <span class="badge bg-dark border border-info ms-1">{{ csv_files|length }}</span>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link btn-cyber border-0 py-2 px-4" style="background: rgba(255, 255, 255, 0.05); color: #fff;" data-bs-toggle="tab" data-bs-target="#apkFiles" type="button" onclick="this.style.background='var(--neon-cyan)'; this.style.color='#000';">
+                            <i class="fas fa-mobile-alt me-1"></i> APK Files <span class="badge bg-dark border border-danger ms-1">{{ apk_files|length }}</span>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link btn-cyber border-0 py-2 px-4" style="background: rgba(255, 255, 255, 0.05); color: #fff;" data-bs-toggle="tab" data-bs-target="#otherFiles" type="button">
+                            <i class="fas fa-file me-1"></i> Khác <span class="badge bg-dark border border-secondary ms-1">{{ other_files|length }}</span>
+                        </button>
+                    </li>
+                </ul>
+                
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="csvFiles">
+                        {% if csv_files %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-borderless align-middle text-white mb-0" style="background: transparent;">
+                                <thead style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                                    <tr>
+                                        <th class="text-light text-uppercase small pb-3">Tên file</th>
+                                        <th class="text-light text-uppercase small pb-3 text-center">Dung lượng</th>
+                                        <th class="text-light text-uppercase small pb-3">Thời gian lưu</th>
+                                        <th class="text-light text-uppercase small pb-3 text-end">Hành động</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in csv_files %}
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td class="py-3"><i class="fas fa-file-csv text-info me-2"></i> {{ file.name }}</td>
+                                        <td class="py-3 text-center"><span class="badge bg-dark border border-secondary">{{ file.size_mb }} MB</span></td>
+                                        <td class="py-3 text-light" style="opacity: 0.7;"><i class="far fa-clock me-1"></i> {{ file.modified }}</td>
+                                        <td class="py-3 text-end">
+                                            <button class="btn btn-sm btn-outline-info me-2" onclick="scanFile('csv', '{{ file.name }}')">
+                                                <i class="fas fa-radar"></i> Quét
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteFile('csv', '{{ file.name }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert bg-dark border-warning text-warning d-flex align-items-center"><i class="fas fa-exclamation-triangle fa-2x me-3"></i> <div>Chưa có dữ liệu CSV. Vui lòng upload dataset để tiến hành phân tích hàng loạt.</div></div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-pane fade" id="apkFiles">
+                        {% if apk_files %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-borderless align-middle text-white mb-0" style="background: transparent;">
+                                <thead style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                                    <tr>
+                                        <th class="text-light text-uppercase small pb-3">Tên file</th>
+                                        <th class="text-light text-uppercase small pb-3 text-center">Dung lượng</th>
+                                        <th class="text-light text-uppercase small pb-3">Thời gian lưu</th>
+                                        <th class="text-light text-uppercase small pb-3 text-end">Hành động</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in apk_files %}
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td class="py-3"><i class="fas fa-mobile-alt text-danger me-2"></i> {{ file.name }}</td>
+                                        <td class="py-3 text-center"><span class="badge bg-dark border border-secondary">{{ file.size_mb }} MB</span></td>
+                                        <td class="py-3 text-light" style="opacity: 0.7;"><i class="far fa-clock me-1"></i> {{ file.modified }}</td>
+                                        <td class="py-3 text-end">
+                                            <button class="btn btn-sm btn-outline-danger me-2" onclick="scanFile('apk', '{{ file.name }}')">
+                                                <i class="fas fa-radar"></i> Quét
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteFile('apk', '{{ file.name }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                         </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert bg-dark border-warning text-warning d-flex align-items-center"><i class="fas fa-exclamation-triangle fa-2x me-3"></i> <div>Chưa có file APK. Vui lòng upload file để phân tích tĩnh.</div></div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-pane fade" id="otherFiles">
+                        {% if other_files %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-borderless align-middle text-white mb-0" style="background: transparent;">
+                                <thead style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                                    <tr>
+                                        <th class="text-light text-uppercase small pb-3">Tên file</th>
+                                        <th class="text-light text-uppercase small pb-3 text-center">Dung lượng</th>
+                                        <th class="text-light text-uppercase small pb-3">Thời gian lưu</th>
+                                        <th class="text-light text-uppercase small pb-3 text-end">Hành động</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in other_files %}
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td class="py-3"><i class="fas fa-file text-secondary me-2"></i> {{ file.name }}</td>
+                                        <td class="py-3 text-center"><span class="badge bg-dark border border-secondary">{{ file.size_mb }} MB</span></td>
+                                        <td class="py-3 text-light" style="opacity: 0.7;"><i class="far fa-clock me-1"></i> {{ file.modified }}</td>
+                                        <td class="py-3 text-end">
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteFile('other', '{{ file.name }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                         </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert bg-dark border-secondary text-secondary d-flex align-items-center"><i class="fas fa-info-circle fa-2x me-3"></i> <div>Thư mục trống.</div></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Result Modal (Dark Theme Support) -->
+<div class="modal fade" id="resultModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="background: var(--bg-deep); border: 1px solid var(--neon-cyan); box-shadow: 0 0 30px rgba(34,211,238,0.2);">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-white"><i class="fas fa-chart-bar text-info me-2"></i> Báo Cáo Phân Tích Nhanh</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="resultModalBody" style="color: var(--text-main);"></div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-outline-secondary text-white" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Upload file
+document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('uploadFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        Swal.fire({ background: '#0f172a', color: '#fff', icon: 'warning', title: 'Cảnh báo', text: 'Vui lòng chọn file!' });
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    document.getElementById('uploadProgress').style.display = 'block';
+    
+    try {
+        const response = await fetch('/file-manager/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            Swal.fire({ background: '#0f172a', color: '#fff', icon: 'error', title: 'Lỗi', text: data.error });
+        }
+    } catch (error) {
+        Swal.fire({ background: '#0f172a', color: '#fff', icon: 'error', title: 'Lỗi hệ thống', text: error.message });
+    } finally {
+        document.getElementById('uploadProgress').style.display = 'none';
+        fileInput.value = '';
+    }
+});
+
+// Scan file
+async function scanFile(type, filename) {
+    const modal = new bootstrap.Modal(document.getElementById('resultModal'));
+    const modalBody = document.getElementById('resultModalBody');
+    modalBody.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-info mb-3"></div><h5 class="text-info">Hệ thống đang trích xuất dữ liệu...</h5></div>';
+    modal.show();
+    
+    try {
+        const response = await fetch(`/file-manager/scan/${type}/${filename}`);
+        const data = await response.json();
+        
+        if (data.success !== false) {
+            modalBody.innerHTML = formatResult(data, type);
+        } else {
+            modalBody.innerHTML = `<div class="alert bg-dark border-danger text-danger"><i class="fas fa-exclamation-triangle"></i> Lỗi: ${data.error}</div>`;
+        }
+    } catch (error) {
+        modalBody.innerHTML = `<div class="alert bg-dark border-danger text-danger"><i class="fas fa-exclamation-triangle"></i> Lỗi kết nối AI Engine: ${error.message}</div>`;
+    }
+}
+
+// Delete file
+async function deleteFile(type, filename) {
+    Swal.fire({
+        title: 'Xóa đối tượng?',
+        text: `Bạn có chắc chắn muốn xóa file ${filename} khỏi hệ thống?`,
+        icon: 'warning',
+        background: '#0f172a', color: '#fff',
+        showCancelButton: true, confirmButtonColor: '#f43f5e', cancelButtonColor: '#475569',
+        confirmButtonText: 'Tiến hành Xóa'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                const response = await fetch(`/file-manager/delete/${type}/${filename}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) location.reload();
+                else Swal.fire({ background: '#0f172a', color: '#fff', icon: 'error', title: 'Lỗi', text: data.error });
+            } catch (error) {
+                Swal.fire({ background: '#0f172a', color: '#fff', icon: 'error', title: 'Lỗi', text: error.message });
+            }
+        }
+    });
+}
+
+// Format result (Dark Theme)
+function formatResult(data, type) {
+    if (type === 'csv' || data.type === 'csv') {
+        const first = data.first_sample || data;
+        let alertColor = '#4ade80'; let borderColor = 'rgba(74, 222, 128, 0.4)';
+        if (first.risk_level === 'Rất cao') { alertColor = '#f43f5e'; borderColor = 'rgba(244, 63, 94, 0.4)'; }
+        else if (first.risk_level === 'Trung bình') { alertColor = '#facc15'; borderColor = 'rgba(250, 204, 21, 0.4)'; }
+        
+        let statsHtml = '';
+        if(data.statistics) {
+            for (const [key, value] of Object.entries(data.statistics)) {
+                const classNames = {'1': '🟢 Benign', '2': '📢 Adware', '3': '🏦 Banking', '4': '💬 SMS', '5': '⚠️ Riskware'};
+                statsHtml += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td>${classNames[key] || key}</td><td class="text-center">${value.count}</td><td class="text-end">${value.percentage}%</td></tr>`;
+            }
+        }
+        
+        return `
+            <div class="p-3 mb-3 rounded" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+                <p class="mb-1"><strong class="text-info">Target:</strong> ${data.filename || 'N/A'}</p>
+                <p class="mb-0"><strong class="text-info">Mẫu phân tích:</strong> ${data.total_samples || 1}</p>
+            </div>
+            <div class="text-center p-4 rounded mb-4" style="background: rgba(0,0,0,0.4); border: 1px solid ${borderColor};">
+                <div style="font-size: 50px; text-shadow: 0 0 15px ${alertColor};">${first.icon || '📊'}</div>
+                <h3 class="text-white mt-2">${first.name || 'Kết quả'}</h3>
+                <div class="d-flex justify-content-around mt-3">
+                    <div><small class="text-muted d-block">Độ tin cậy</small><span class="fs-4 text-white">${first.confidence || 0}%</span></div>
+                    <div><small class="text-muted d-block">Mức độ rủi ro</small><span class="fs-4 fw-bold" style="color: ${alertColor};">${first.risk_level || 'N/A'}</span></div>
+                </div>
+            </div>
+            ${statsHtml ? `<h6 class="text-info border-bottom border-secondary pb-2">Thống kê phân bổ:</h6>
+            <table class="table table-borderless text-white small">
+                <thead style="opacity:0.7;"><tr><th>Lớp mã độc</th><th class="text-center">Số lượng</th><th class="text-end">Tỷ lệ</th></tr></thead>
+                <tbody>${statsHtml}</tbody>
+            </table>` : ''}
+            <div class="text-center mt-3"><a href="/scan" class="btn btn-sm btn-outline-info">Truy cập Trang Quét để xem chi tiết</a></div>
+        `;
+    } else {
+        return `<div class="text-center p-4"><i class="fas fa-check-circle text-success fa-3x mb-3"></i><h5 class="text-white">Phân tích thành công</h5><p class="text-muted">Vui lòng sử dụng tính năng "Quét file" (Scanner) ở menu để xem báo cáo tĩnh (Permissions, XAI) chi tiết cho APK.</p></div>`;
+    }
+}
+</script>
+{% endblock %}

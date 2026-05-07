@@ -1,0 +1,3 @@
+Nhớ bật web lên trước khi xài lệnh dưới ( chủ yếu mở r copy cái farward lấy link gửi cho ngta xài thôi ) 
+
+cd C:\Project_AI_Malware\AI-MALWARE\ez\android-malware-detection\android-malware-detection\web ngrok 5000

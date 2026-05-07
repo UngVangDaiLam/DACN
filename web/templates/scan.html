@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}Scanner - DroidGuard AI{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 fade-in">
+    <h3 class="mb-4 text-white" style="text-shadow: 0 0 10px var(--neon-cyan);">
+        <i class="fas fa-terminal me-2"></i> Malware Analysis Module
+    </h3>
+
+    <div class="row g-4">
+        <!-- Cột Form Tải file -->
+        <div class="col-lg-4">
+            <div class="card mb-4" style="border-left: 4px solid var(--neon-cyan) !important;">
+                <div class="card-body">
+                    <h5 class="text-info mb-3"><i class="fas fa-file-csv me-2"></i>Batch Analysis (CSV)</h5>
+                    <p class="text-light small mb-3" style="opacity: 0.8;">Tải lên file đặc trưng dạng CSV để phân loại hàng loạt.</p>
+                    <form id="csvForm">
+                        <div class="mb-3">
+                            <input type="file" class="form-control bg-dark text-light border-secondary" id="csvFile" accept=".csv" required>
+                        </div>
+                        <button type="submit" class="btn btn-cyber w-100 py-2" id="csvScanBtn">
+                            <i class="fas fa-search me-1"></i> Quét CSV
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="border-left: 4px solid var(--neon-red) !important;">
+                <div class="card-body">
+                    <h5 class="text-danger mb-3"><i class="fas fa-mobile-alt me-2"></i>Deep Analysis (APK)</h5>
+                    <p class="text-light small mb-3" style="opacity: 0.8;">Phân tích tĩnh ứng dụng Android (quyền, đặc trưng).</p>
+                    <form id="apkForm">
+                        <div class="mb-3">
+                            <input type="file" class="form-control bg-dark text-light border-secondary" id="apkFile" accept=".apk" required>
+                        </div>
+                        <button type="submit" class="btn w-100 py-2 text-white" style="background: rgba(244, 63, 94, 0.1); border: 1px solid var(--neon-red); box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);" id="apkScanBtn" onmouseover="this.style.background='var(--neon-red)'; this.style.color='#000';" onmouseout="this.style.background='rgba(244, 63, 94, 0.1)'; this.style.color='#fff';">
+                            <i class="fas fa-search me-1"></i> Quét APK
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cột Hiển thị Terminal và Kết quả -->
+        <div class="col-lg-8">
+            <div class="card h-100" style="min-height: 500px;">
+                <div class="card-body d-flex flex-column" id="resultContainer">
+                    <div class="text-center m-auto text-light" style="opacity: 0.6;">
+                        <i class="fas fa-shield-alt fa-4x mb-3" style="opacity: 0.5; filter: drop-shadow(0 0 10px currentColor);"></i>
+                        <h5>Hệ thống sẵn sàng tiếp nhận mẫu</h5>
+                        <p class="small">Vui lòng tải lên file APK hoặc CSV từ bảng điều khiển bên trái.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Logic lưu lịch sử đã được vá lỗi
+function saveToHistory(rawData, type) {
+    try {
+        // Bóc lớp vỏ ai_result nếu là file APK, nếu là CSV thì giữ nguyên
+        const data = rawData.ai_result ? rawData.ai_result : rawData;
+
+        let history = JSON.parse(localStorage.getItem('malware_scan_history') || '[]');
+        
+        const firstSample = data.first_sample && Object.keys(data.first_sample).length
+            ? data.first_sample
+            : (data.class ? { class: data.class, name: data.name, confidence: data.confidence, icon: data.icon, risk_level: data.risk_level } : {});
+
+        let statistics = data.statistics;
+        if (!statistics || !Object.keys(statistics).length) {
+            statistics = data.class ? { [data.class]: { count: 1, percentage: 100 } } : {};
+        }
+
+        const newRecord = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            filename: data.filename,
+            total_samples: data.total_samples || 1,
+            statistics: statistics,
+            first_sample: firstSample,
+            type: type
+        };
+
+        history.unshift(newRecord);
+        history = history.slice(0, 50); // Giữ lại 50 bản ghi mới nhất
+        localStorage.setItem('malware_scan_history', JSON.stringify(history));
+        window.dispatchEvent(new CustomEvent('malware-history-updated', { detail: { count: history.length } }));
+    } catch(e) {
+        console.error('Lỗi lưu lịch sử:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const csvForm = document.getElementById('csvForm');
+    if (csvForm) {
+        csvForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const file = document.getElementById('csvFile').files[0];
+            if (file) await scanFile(file, '/scan/csv', 'csv');
+        });
+    }
+
+    const apkForm = document.getElementById('apkForm');
+    if (apkForm) {
+        apkForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const file = document.getElementById('apkFile').files[0];
+            if (file) await scanFile(file, '/scan/apk', 'apk');
+        });
+    }
+
+    async function scanFile(file, endpoint, type) {
+        const resultDiv = document.getElementById('resultContainer');
+        const isApk = type === 'apk';
+        const color = isApk ? 'var(--neon-red)' : 'var(--neon-cyan)';
+
+        // Giao diện Loading xịn xò kết hợp Radar và Terminal Log
+        resultDiv.innerHTML = `
+            <div class="terminal w-100 h-100 p-4 rounded-3 d-flex flex-column">
+                <div class="d-flex justify-content-between border-bottom border-secondary pb-2 mb-4">
+                    <span style="color: ${color}; font-weight: bold;"><i class="fas fa-terminal me-2"></i> DroidGuard Core Execution</span>
+                    <span class="text-warning fw-bold" id="scanPercentage">0%</span>
+                </div>
+                
+                <div class="d-flex align-items-center mb-4 p-3 rounded-3" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.05);">
+                    <div class="radar me-4" style="width: 70px; height: 70px; margin: 0; border-color: ${color}; box-shadow: 0 0 15px ${color};"></div>
+                    <div class="flex-grow-1">
+                        <h5 class="text-white mb-2 fw-bold" style="letter-spacing: 1px;">PHÂN TÍCH VECTOR ĐANG CHẠY...</h5>
+                        <div class="progress" style="height: 6px; background: #222; border-radius: 10px;">
+                            <div id="scanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%; background-color: ${color};"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="scanLog" class="flex-grow-1 p-3 rounded-3" style="background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); overflow-y: auto; max-height: 300px;">
+                    <div class="mb-1"><span class="text-light" style="opacity:0.6;">[SYSTEM]</span> Khởi tạo luồng quét cho mục tiêu: <strong class="text-white">${file.name}</strong></div>
+                </div>
+            </div>
+        `;
+
+        const progressBar = document.getElementById('scanProgressBar');
+        const pctText = document.getElementById('scanPercentage');
+        const log = document.getElementById('scanLog');
+
+        function addLog(text, isError=false) {
+            const time = new Date().toLocaleTimeString('en-US', {hour12: false});
+            log.innerHTML += `<div class="mb-1"><span class="text-light" style="opacity:0.6;">[${time}]</span> <span style="color: ${isError ? 'var(--neon-red)' : 'inherit'}">${text}</span></div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function setProgress(val, text) {
+            progressBar.style.width = val + "%";
+            pctText.innerText = val + "%";
+            if (text) addLog(text);
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            setProgress(5, "Initializing AI Core components...");
+            setProgress(15, "Uploading payload to isolated environment...");
+            
+            // Bắt đầu gọi API
+            const res = await fetch(endpoint, { method: 'POST', body: formData });
+            
+            setProgress(40, "Extracting dynamic & static features...");
+            setProgress(65, "Engaging Machine Learning models...");
+            setProgress(85, "Cross-referencing behavioral signatures...");
+            
+            const data = await res.json();
+            
+            setProgress(100, "Scan completed ✔. Formatting report...");
+            saveToHistory(data, type);
+
+            setTimeout(() => {
+                if(type === 'csv') displayCsvResult(data);
+                else displayApkResult(data);
+            }, 800); // Đợi xíu cho có cảm giác thật
+
+        } catch (err) {
+            addLog("❌ ERROR: " + err.message, true);
+        }
+    }
+
+    function displayCsvResult(data) {
+        const resultDiv = document.getElementById('resultContainer');
+        const first = data.first_sample;
+        const stats = data.statistics;
+
+        let alertClass = 'success';
+        if (first.risk_level === 'Rất cao' || first.risk_level === 'Cao') alertClass = 'danger';
+        else if (first.risk_level === 'Trung bình') alertClass = 'warning';
+
+        const classNames = { '1': '🟢 Benign', '2': '📢 Adware', '3': '🏦 Banking', '4': '💬 SMS Malware', '5': '⚠️ Riskware' };
+
+        let statsHtml = '';
+        for (const [key, value] of Object.entries(stats)) {
+            statsHtml += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <td class="text-light fw-bold">${classNames[key] || key}</td>
+                    <td class="text-center"><span class="badge" style="background: rgba(0,243,255,0.2); color: var(--neon-cyan);">${value.count}</span></td>
+                    <td class="text-center"><span class="badge bg-secondary">${value.percentage}%</span></td>
+                </tr>
+            `;
+        }
+
+        const html = `
+        <h4 style="color: var(--neon-cyan);" class="mb-4 fw-bold"><i class="fas fa-list-alt me-2"></i> Batch Analysis Report</h4>
+        <div class="p-3 rounded-3 mb-4" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+            <h5 class="text-white"><i class="fas fa-file-csv text-info me-2"></i> Dataset: <span class="text-info">${escapeHtml(data.filename)}</span></h5>
+            <p class="text-light mb-0 fs-5" style="opacity:0.8;"><i class="fas fa-chart-simple me-2"></i> Tổng số mẫu phân tích: <strong>${data.total_samples}</strong></p>
+        </div>
+
+        <div class="alert bg-dark border-${alertClass} text-center py-4 text-white shadow-lg ${alertClass === 'danger' ? 'danger-blink' : ''}">
+            <div style="font-size: 64px; text-shadow: 0 0 15px currentColor;">${first.icon}</div>
+            <h3 class="mt-2 fw-bold text-white">${first.name}</h3>
+            <hr style="border-top: 1px solid rgba(255,255,255,0.2)">
+            <div class="row">
+                <div class="col-6">
+                    <strong class="text-light text-uppercase" style="opacity:0.7;">🎯 Độ tin cậy AI</strong><br>
+                    <span class="fs-2 fw-bold text-white">${first.confidence}%</span>
+                </div>
+                <div class="col-6">
+                    <strong class="text-light text-uppercase" style="opacity:0.7;">⚠️ Mức độ rủi ro</strong><br>
+                    <span class="fs-4 fw-bold text-${alertClass}">${first.risk_level}</span>
+                </div>
+            </div>
+        </div>
+
+        <h5 class="mt-4 text-white"><i class="fas fa-chart-pie me-2"></i> Phân bổ thống kê:</h5>
+        <div class="table-responsive">
+            <table class="table table-borderless">
+                <thead style="background: rgba(255,255,255,0.1); color: white;">
+                    <tr><th>Phân lớp mã độc</th><th class="text-center">Số lượng</th><th class="text-center">Tỷ lệ</th></tr>
+                </thead>
+                <tbody>${statsHtml}</tbody>
+            </table>
+        </div>
+        <div class="p-3 rounded-3 mt-3" style="background: rgba(0,243,255,0.05); border-left: 4px solid var(--neon-cyan);">
+            <strong class="text-info"><i class="fas fa-lightbulb"></i> Khuyến nghị hệ thống:</strong><br>
+            <span class="text-white">${getRecommendation(first.class)}</span>
+        </div>
+        `;
+        resultDiv.innerHTML = html;
+    }
+
+    function displayApkResult(data) {
+        if (data.ai_result) { data = data.ai_result; }
+        const isDanger = data.risk_level === 'Rất cao' || data.risk_level === 'Cao';
+        const colorClass = isDanger ? 'var(--neon-red)' : 'var(--neon-cyan)';
+
+        let dangerousHtml = '';
+        if (data.dangerous_permissions && data.dangerous_permissions.length > 0) {
+            dangerousHtml = `
+                <h6 class="mt-3 text-danger fw-bold"><i class="fas fa-shield-alt"></i> Quyền truy cập rủi ro (${data.dangerous_count || data.dangerous_permissions.length}):</h6>
+                <ul class="list-group list-group-flush mb-3 rounded" style="background: rgba(255,23,68,0.1);">
+                    ${data.dangerous_permissions.slice(0, 10).map(p => `<li class="list-group-item bg-transparent text-white border-0">🔴 ${p}</li>`).join('')}
+                    ${data.dangerous_permissions.length > 10 ? `<li class="list-group-item bg-transparent text-light border-0" style="opacity:0.7;">... và ${data.dangerous_permissions.length - 10} quyền khác</li>` : ''}
+                </ul>
+            `;
+        } else {
+            dangerousHtml = '<p class="text-success mt-3"><i class="fas fa-check-circle me-1"></i> Hệ thống không phát hiện quyền truy cập nguy hiểm.</p>';
+        }
+
+        let html = `
+            <div class="row text-center mb-4">
+                <div class="col-md-6 mb-3">
+                    <div class="p-4 rounded-3 h-100 ${isDanger ? 'danger-blink' : ''}" style="background: rgba(0,0,0,0.4); border: 1px solid ${colorClass};">
+                        <div style="font-size: 64px; text-shadow: 0 0 15px ${colorClass};">${data.icon || '🤖'}</div>
+                        <h3 class="text-white mt-3 fw-bold">${data.name || data.display_name || 'Kết quả'}</h3>
+                        <div class="d-flex justify-content-around mt-3 border-top border-secondary pt-3">
+                            <div>
+                                <small class="text-light d-block text-uppercase" style="opacity:0.7;">Độ tin cậy AI</small>
+                                <strong class="fs-4 text-white">${data.confidence}%</strong>
+                            </div>
+                            <div>
+                                <small class="text-light d-block text-uppercase" style="opacity:0.7;">Mức rủi ro</small>
+                                <strong class="fs-4" style="color:${colorClass};">${data.risk_level || 'N/A'}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3 text-start">
+                    <div class="p-4 h-100 rounded-3" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+                        <p class="mb-3"><i class="fas fa-file text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">File Target:</strong> <span class="text-white">${escapeHtml(data.filename || 'File')}</span></p>
+                        <p class="mb-3"><i class="fas fa-box text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Package ID:</strong> <code class="text-info fs-6">${data.package_name || 'N/A'}</code></p>
+                        <p class="mb-3"><i class="fas fa-tag text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Tên App:</strong> <span class="text-white">${data.app_name || 'Không xác định'}</span></p>
+                        <p class="mb-0"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${data.version || 'N/A'}</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-3">
+                ${dangerousHtml}
+                <div class="p-3 rounded-3 mt-3" style="background: rgba(0,243,255,0.05); border-left: 4px solid var(--neon-cyan);">
+                    <strong class="text-info"><i class="fas fa-lightbulb"></i> Khuyến nghị hệ thống:</strong><br>
+                    <span class="text-white">${getRecommendation(data.class_name || data.class)}</span>
+                </div>
+                ${data.mobsf_link ? `<div class="mt-4"><a href="${data.mobsf_link}" target="_blank" class="btn btn-outline-info w-100 py-3 rounded-pill fw-bold" style="border-width: 2px;"><i class="fas fa-search-plus me-2"></i> TRUY CẬP BÁO CÁO CHUYÊN Sâu (MobSF)</a></div>` : ''}
+            </div>
+        `;
+
+        let featureHtml = data.active_features && data.active_features.length > 0 
+            ? data.active_features.map(f => `<li class="list-group-item bg-transparent text-danger fw-bold border-secondary">⚠️ ${f}</li>`).join('')
+            : '<li class="list-group-item bg-transparent text-success border-secondary">✅ Không phát hiện bất thường dựa trên XAI.</li>';
+
+        html += `
+        <div id="advanced-report" class="row mt-5">
+            <h4 class="text-white mb-3"><i class="fas fa-microchip me-2"></i> Phân tích độ tin cậy AI</h4>
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm border-0 h-100 bg-dark">
+                    <h6 class="text-light text-center mb-3" style="opacity:0.8;">Phân phối Xác suất Mô hình</h6>
+                    <div class="card-body text-center" style="position: relative; height:250px;">
+                        <canvas id="probabilityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm h-100" style="background: rgba(255,23,68,0.05); border: 1px solid rgba(255,23,68,0.2) !important;">
+                    <h6 class="text-danger mb-3"><i class="fas fa-search me-2"></i> Bằng chứng Cấu thành (Features)</h6>
+                    <ul class="list-group list-group-flush" style="max-height: 230px; overflow-y: auto;">
+                        ${featureHtml}
+                    </ul>
+                </div>
+            </div>
+            <div class="col-12 mt-4 text-center">
+                <button onclick="exportToPDF()" class="btn btn-cyber px-5 py-2 fw-bold"><i class="fas fa-download me-2"></i> Xuất Báo Cáo PDF</button>
+            </div>
+        </div>`;
+
+        document.getElementById('resultContainer').innerHTML = html;
+
+        if (data.all_probabilities) {
+            const ctx = document.getElementById('probabilityChart').getContext('2d');
+            if (window.malwareChart) { window.malwareChart.destroy(); }
+            Chart.defaults.color = '#e2e8f0'; 
+            window.malwareChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['An toàn', 'Quảng cáo', 'Ngân hàng', 'Tin nhắn', 'Rủi ro'],
+                    datasets: [{
+                        data: [data.all_probabilities.Benign, data.all_probabilities.Adware, data.all_probabilities.Banking, data.all_probabilities.SMS, data.all_probabilities.Riskware],
+                        backgroundColor: ['#00e676', '#ffd600', '#b388ff', '#ff1744', '#ff9100'],
+                        borderWidth: 0, hoverOffset: 5
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc' } } } }
+            });
+        }
+    }
+
+    window.exportToPDF = function() {
+        const element = document.getElementById('advanced-report');
+        if(element) html2pdf().from(element).save('Bao_cao_DroidGuard.pdf');
+    };
+
+    function getRecommendation(classId) {
+        const recs = { '1': '✅ Ứng dụng an toàn. Có thể tiếp tục sử dụng.', '2': '⚠️ Ứng dụng chứa quảng cáo độc hại. Cân nhắc gỡ cài đặt.', '3': '🔴 NGUY HIỂM! Gỡ cài đặt NGAY. Vui lòng đổi mật khẩu ngân hàng của bạn!', '4': '🔴 NGUY HIỂM! Gỡ cài đặt NGAY. Kiểm tra sao kê cước phí điện thoại!', '5': '⚠️ Phát hiện rủi ro tiềm ẩn. Thận trọng khi cấp quyền cho ứng dụng.' };
+        return recs[classId] || 'Yêu cầu phân tích chuyên sâu.';
+    }
+
+    function escapeHtml(str) { return !str ? '' : str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+});
+</script>
+{% endblock %}

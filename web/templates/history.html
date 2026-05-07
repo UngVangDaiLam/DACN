@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Lịch sử - DroidGuard{% endblock %}
+
+{% block content %}
+<style>
+    /* Ép nền bảng thành màu trong suốt, tắt các sọc màu xám sáng mặc định của Bootstrap */
+    #historyTable table tr {
+        background-color: transparent !important;
+        transition: all 0.3s ease;
+    }
+    
+    /* Hiệu ứng highlight rực rỡ khi di chuột qua hàng (hover) */
+    #historyTable table tbody tr:hover {
+        background-color: rgba(168, 85, 247, 0.05) !important; /* Màu Neon Purple nhạt */
+        box-shadow: inset 2px 0 0 0 var(--neon-purple); /* Viền sáng ở mép trái */
+    }
+
+    /* Đảm bảo chữ trong các cột không bị làm mờ */
+    #historyTable table td {
+        color: #e2e8f0 !important;
+        vertical-align: middle;
+    }
+</style>
+
+<div class="row fade-in">
+    <div class="col-12">
+        <div class="card border-0" style="border-top: 2px solid var(--neon-purple) !important;">
+            <div class="card-header bg-transparent border-bottom border-secondary pt-4 pb-3 d-flex justify-content-between align-items-center">
+                <h4 class="mb-0 text-white"><i class="fas fa-history me-2" style="color: var(--neon-purple);"></i> System Logs - Nhật Ký Quét</h4>
+                <button class="btn btn-sm btn-outline-danger" onclick="clearAllHistory()">
+                    <i class="fas fa-trash-alt me-1"></i> Xóa toàn bộ Data
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div id="historyLoading" class="text-center py-5">
+                    <div class="spinner-border text-info" style="width: 3rem; height: 3rem;"></div>
+                    <p class="mt-3 text-light" style="letter-spacing: 1px;">Đang trích xuất dữ liệu log...</p>
+                </div>
+                
+                <div id="historyTable" style="display: none;" class="p-3">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-borderless align-middle mb-0" style="background: transparent; --bs-table-bg: transparent;">
+                            <thead style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                                <tr>
+                                    <th class="text-light text-uppercase small pb-3 opacity-75"><i class="fas fa-clock"></i> Timestamp</th>
+                                    <th class="text-light text-uppercase small pb-3 opacity-75"><i class="fas fa-file"></i> Tên file</th>
+                                    <th class="text-light text-uppercase small pb-3 text-center opacity-75"><i class="fas fa-chart-simple"></i> Vectors</th>
+                                    <th class="text-light text-uppercase small pb-3 opacity-75"><i class="fas fa-chart-pie"></i> Phân loại</th>
+                                    <th class="text-light text-uppercase small pb-3 opacity-75"><i class="fas fa-flag-checkered"></i> Mức độ đe dọa</th>
+                                    <th class="text-light text-uppercase small pb-3 text-end opacity-75">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody">
+                                </tbody>
+                        </table> </div>
+                </div>
+                
+                <div id="historyEmpty" class="text-center py-5" style="display: none;">
+                    <i class="fas fa-database fa-4x mb-4" style="color: rgba(255,255,255,0.1);"></i>
+                    <p class="text-light" style="opacity: 0.6;">Chưa có bản ghi hệ thống nào được tìm thấy.</p>
+                    <a href="/scan" class="btn btn-cyber mt-2"><i class="fas fa-radar me-2"></i> Khởi động Quét Mới</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function getHistory() {
+    try { return JSON.parse(localStorage.getItem('malware_scan_history') || '[]'); } 
+    catch(e) { return []; }
+}
+
+function saveHistory(history) {
+    localStorage.setItem('malware_scan_history', JSON.stringify(history));
+    window.dispatchEvent(new Event('malware-history-updated'));
+}
+
+function displayHistory() {
+    const history = getHistory();
+    const loadingDiv = document.getElementById('historyLoading');
+    const tableDiv = document.getElementById('historyTable');
+    const emptyDiv = document.getElementById('historyEmpty');
+    
+    if (history.length === 0) {
+        loadingDiv.style.display = 'none'; tableDiv.style.display = 'none'; emptyDiv.style.display = 'block';
+        return;
+    }
+    
+    loadingDiv.style.display = 'none'; tableDiv.style.display = 'block'; emptyDiv.style.display = 'none';
+    const tbody = document.getElementById('historyBody');
+    tbody.innerHTML = '';
+    
+    const classIcons = {'1': '🟢', '2': '📢', '3': '🏦', '4': '💬', '5': '⚠️'};
+    
+    history.forEach(item => {
+        let distributionHtml = '';
+        if (item.statistics) {
+            const badges = [];
+            for (const [key, value] of Object.entries(item.statistics)) {
+                if(value.count > 0) {
+                    const icon = classIcons[key] || '📊';
+                    badges.push(`<span class="badge bg-dark border border-secondary me-1" title="${value.percentage}%">${icon} ${value.count}</span>`);
+                }
+            }
+            distributionHtml = badges.join('');
+        }
+        
+        let riskColor = 'rgba(74, 222, 128, 0.2)'; let riskBorder = '#4ade80';
+        if (item.first_sample && item.first_sample.risk_level === 'Rất cao') { riskColor = 'rgba(244, 63, 94, 0.2)'; riskBorder = '#f43f5e'; }
+        else if (item.first_sample && item.first_sample.risk_level === 'Trung bình') { riskColor = 'rgba(250, 204, 21, 0.2)'; riskBorder = '#facc15'; }
+        
+        const firstIcon = item.first_sample?.icon || '📊';
+        const firstName = item.first_sample?.name || 'Unknown';
+        const firstConfidence = item.first_sample?.confidence || '?';
+        
+        tbody.innerHTML += `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td class="py-3 text-light" style="opacity: 0.8; font-family: monospace; font-size: 0.85rem;">${item.timestamp.replace('T', ' ').substring(0, 19)}</td>
+                <td class="py-3 fw-bold"><i class="fas fa-file-code me-2" style="color:var(--neon-purple); opacity:0.7;"></i>${escapeHtml(item.filename)}</td>
+                <td class="py-3 text-center"><span class="badge" style="background: rgba(255,255,255,0.1);">${item.total_samples}</span></td>
+                <td class="py-3">${distributionHtml}</td>
+                <td class="py-3">
+                    <span class="badge px-2 py-1 text-white" style="background: ${riskColor}; border: 1px solid ${riskBorder};">
+                        ${firstIcon} ${firstName} (${firstConfidence}%)
+                    </span>
+                </td>
+                <td class="py-3 text-end">
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteHistory(${item.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function deleteHistory(id) {
+    if(confirm("Bạn có chắc chắn muốn xóa bản ghi này?")) {
+        let history = getHistory(); history = history.filter(item => item.id !== id);
+        saveHistory(history); displayHistory();
+    }
+}
+
+function clearAllHistory() {
+    Swal.fire({
+        title: 'CẢNH BÁO HỆ THỐNG', text: "Hành động này sẽ XÓA TOÀN BỘ dữ liệu thống kê. Tiếp tục?", icon: 'error',
+        background: '#0f172a', color: '#fff', showCancelButton: true, confirmButtonColor: '#f43f5e', cancelButtonColor: '#475569', confirmButtonText: 'XÓA TẤT CẢ'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            localStorage.removeItem('malware_scan_history');
+            displayHistory(); window.dispatchEvent(new Event('malware-history-updated'));
+
+        }
+    });
+}
+
+function escapeHtml(str) { return !str ? '' : str.replace(/[&<>]/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[m])); }
+
+document.addEventListener('DOMContentLoaded', function() {
+    displayHistory();
+    window.addEventListener('storage', function(e) { if (e.key === 'malware_scan_history') displayHistory(); });
+    // Thêm listener này để tự động làm mới khi có dữ liệu quét mới đẩy vào từ trang khác
+    window.addEventListener('malware-history-updated', displayHistory);
+});
+</script>
+{% endblock %}

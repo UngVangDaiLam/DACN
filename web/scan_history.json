@@ -1,0 +1,130 @@
+[
+  {
+    "id": "d0db1d7a-d8dd-4cd0-9267-115fb8df6ba0",
+    "type": "csv",
+    "filename": "feature_vectors_syscallsbinders_frequency_5_Cat.csv",
+    "timestamp": "2026-04-13T20:07:23.006103",
+    "total_samples": 11598,
+    "statistics": {
+      "1": {
+        "count": 1272,
+        "percentage": 10.97,
+        "info": {
+          "name": "Benign (An toàn)",
+          "icon": "🟢",
+          "color": "success",
+          "bg": "#d4edda",
+          "risk_level": "Thấp",
+          "risk_score": 10,
+          "description": "Ứng dụng an toàn, không chứa mã độc hoặc hành vi nguy hiểm.",
+          "symptoms": [
+            "Hoạt động bình thường",
+            "Không có hành vi đáng ngờ"
+          ],
+          "actions": [
+            "✅ Có thể sử dụng bình thường",
+            "✅ Không cần xử lý thêm"
+          ],
+          "recommendations": "Tiếp tục sử dụng bình thường và cập nhật ứng dụng thường xuyên."
+        }
+      },
+      "2": {
+        "count": 2067,
+        "percentage": 17.82,
+        "info": {
+          "name": "Adware (Quảng cáo độc hại)",
+          "icon": "📢",
+          "color": "warning",
+          "bg": "#fff3cd",
+          "risk_level": "Trung bình",
+          "risk_score": 45,
+          "description": "Ứng dụng hiển thị quảng cáo gây khó chịu, có thể nhấp chuột tự động và tốn pin.",
+          "symptoms": [
+            "Xuất hiện quảng cáo bất thường",
+            "Tốn pin và dữ liệu",
+            "Trình duyệt bị chuyển hướng"
+          ],
+          "actions": [
+            "⚠️ Cân nhắc gỡ cài đặt",
+            "⚠️ Chặn thông báo từ ứng dụng"
+          ],
+          "recommendations": "Nếu không cần thiết, nên gỡ cài đặt. Sử dụng trình chặn quảng cáo."
+        }
+      },
+      "3": {
+        "count": 3933,
+        "percentage": 33.91,
+        "info": {
+          "name": "Banking Malware (Mã độc ngân hàng)",
+          "icon": "🏦",
+          "color": "danger",
+          "bg": "#f8d7da",
+          "risk_level": "Rất cao",
+          "risk_score": 95,
+          "description": "MÃ ĐỘC NGUY HIỂM! Đánh cắp thông tin đăng nhập ngân hàng, thẻ tín dụng.",
+          "symptoms": [
+            "Yêu cầu quyền truy cập bất thường",
+            "Màn hình giả mạo ứng dụng ngân hàng"
+          ],
+          "actions": [
+            "🔴 Gỡ cài đặt NGAY LẬP TỨC!",
+            "🔴 Đổi mật khẩu ngân hàng"
+          ],
+          "recommendations": "Tuyệt đối không nhập thông tin đăng nhập khi có nghi ngờ."
+        }
+      },
+      "4": {
+        "count": 2512,
+        "percentage": 21.66,
+        "info": {
+          "name": "SMS Malware (Mã độc tin nhắn)",
+          "icon": "💬",
+          "color": "danger",
+          "bg": "#f8d7da",
+          "risk_level": "Rất cao",
+          "risk_score": 90,
+          "description": "MÃ ĐỘC NGUY HIỂM! Tự động gửi tin nhắn SMS đến số cao cấp.",
+          "symptoms": [
+            "Tin nhắn lạ được gửi đi",
+            "Cước phí điện thoại tăng bất thường"
+          ],
+          "actions": [
+            "🔴 Gỡ cài đặt NGAY LẬP TỨC!",
+            "🔴 Kiểm tra sao kê điện thoại"
+          ],
+          "recommendations": "Tắt tin nhắn cao cấp qua nhà mạng. Cài đặt ứng dụng diệt virus."
+        }
+      },
+      "5": {
+        "count": 1814,
+        "percentage": 15.64,
+        "info": {
+          "name": "Riskware (Phần mềm rủi ro)",
+          "icon": "⚠️",
+          "color": "warning",
+          "bg": "#ffe5d0",
+          "risk_level": "Cao",
+          "risk_score": 60,
+          "description": "Phần mềm có hành vi không mong muốn, tiềm ẩn rủi ro bảo mật.",
+          "symptoms": [
+            "Thu thập dữ liệu cá nhân",
+            "Chạy ngầm trong nền"
+          ],
+          "actions": [
+            "⚠️ Thận trọng khi sử dụng",
+            "⚠️ Hạn chế quyền truy cập"
+          ],
+          "recommendations": "Xem xét kỹ các quyền mà ứng dụng yêu cầu."
+        }
+      }
+    },
+    "overall_risk": "critical",
+    "first_sample": {
+      "class": "1",
+      "name": "Benign (An toàn)",
+      "confidence": 71.39,
+      "icon": "🟢",
+      "risk_level": "Thấp"
+    }
+  }
+]
