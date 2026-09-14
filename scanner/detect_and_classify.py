@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import hashlib
 
 class MalwareDetector:
     def __init__(self, model_path='models/malware_model.pkl', 
@@ -77,11 +78,18 @@ class MalwareDetector:
             }
         }
     
-    def analyze_apk(self, apk_path, filename):
-        """Phân tích file APK với độ chính xác về đặc trưng (Features)"""
+    def analyze_apk(self, apk_input, filename):
+        """Phân tích file APK. apk_input có thể là bytes (từ upload stream) hoặc file path."""
         try:
             from androguard.core.apk import APK
-            apk = APK(apk_path)
+            # Nhận bytes trực tiếp hoặc đọc từ file path
+            if isinstance(apk_input, (bytes, bytearray)):
+                apk_bytes = bytes(apk_input)
+            else:
+                with open(apk_input, 'rb') as _f:
+                    apk_bytes = _f.read()
+            sha256 = hashlib.sha256(apk_bytes).hexdigest()
+            apk = APK(apk_bytes, raw=True)
             permissions = apk.get_permissions()
             
             # 1. Lấy danh sách đặc trưng mà Model/Scaler thực sự mong đợi
@@ -138,7 +146,58 @@ class MalwareDetector:
             
             dangerous_found = [p for p in permissions if p.split('.')[-1] + "__" in expected_features]
 
-            # Đảm bảo confidence là kiểu float thuần túy của Python
+            # Binary vector mẫu (20 cột đầu) để hiển thị trong UI
+            sample_cols = list(expected_features[:20])
+            binary_vector_sample = [int(features_dict[c]) for c in sample_cols]
+
+            # Top contributing features: contribution = feature_value × global_importance
+            # Cho biết đặc trưng nào trong APK này đã "kéo" model về kết quả phân loại
+            importances = self.model.feature_importances_
+            feat_values = np.array([features_dict[f] for f in expected_features])
+            contributions = feat_values * importances
+            top_idx = np.argsort(contributions)[::-1][:15]
+            top_contributing = [
+                {
+                    'name': str(expected_features[i]),
+                    'present': int(feat_values[i]),
+                    'importance': round(float(importances[i]) * 100, 3),
+                    'contribution': round(float(contributions[i]) * 100, 3),
+                }
+                for i in top_idx if contributions[i] > 0
+            ]
+            # Top vắng mặt nhưng quan trọng (absent but high importance)
+            absent_important = [
+                {
+                    'name': str(expected_features[i]),
+                    'importance': round(float(importances[i]) * 100, 3),
+                }
+                for i in np.argsort(importances)[::-1][:30]
+                if feat_values[i] == 0
+            ][:5]
+
+            # Static risk combo — phát hiện tổ hợp quyền nguy hiểm
+            perms_set = set(permissions)
+            risk_combos = []
+            RISK_RULES = [
+                ({'android.permission.READ_SMS', 'android.permission.INTERNET'},
+                 'Có thể đánh cắp mã OTP và gửi về máy chủ từ xa'),
+                ({'android.permission.RECORD_AUDIO', 'android.permission.INTERNET'},
+                 'Có thể nghe lén và truyền âm thanh lên mạng'),
+                ({'android.permission.ACCESS_FINE_LOCATION', 'android.permission.INTERNET'},
+                 'Có thể theo dõi vị trí GPS và gửi về máy chủ'),
+                ({'android.permission.READ_CONTACTS', 'android.permission.SEND_SMS'},
+                 'Có thể phát tán spam SMS tới toàn bộ danh bạ'),
+                ({'android.permission.CAMERA', 'android.permission.INTERNET'},
+                 'Có thể chụp ảnh bí mật và upload lên mạng'),
+                ({'android.permission.READ_CALL_LOG', 'android.permission.INTERNET'},
+                 'Có thể rò rỉ lịch sử cuộc gọi ra ngoài'),
+                ({'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.READ_SMS'},
+                 'Có thể sao chép tin nhắn vào thẻ nhớ'),
+            ]
+            for required_perms, warning in RISK_RULES:
+                if required_perms.issubset(perms_set):
+                    risk_combos.append(warning)
+
             confidence_score = float(round(prob, 2))
 
             return {
@@ -154,8 +213,15 @@ class MalwareDetector:
                 'color': info['color'],
                 'risk_level': info['risk_level'],
                 'dangerous_permissions': dangerous_found,
+                'all_permissions': list(permissions),
                 'total_permissions': len(permissions),
-                'feature_count': found_count
+                'feature_count': found_count,
+                'sha256': sha256,
+                'binary_vector_sample': binary_vector_sample,
+                'feature_column_names': sample_cols,
+                'risk_combos': risk_combos,
+                'top_contributing': top_contributing,
+                'absent_important': absent_important,
             }
 
         except Exception as e:

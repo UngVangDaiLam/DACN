@@ -214,25 +214,13 @@ document.getElementById('uploadForm').addEventListener('submit', async function(
     }
 });
 
-// Scan file
-async function scanFile(type, filename) {
-    const modal = new bootstrap.Modal(document.getElementById('resultModal'));
-    const modalBody = document.getElementById('resultModalBody');
-    modalBody.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-info mb-3"></div><h5 class="text-info">Hệ thống đang trích xuất dữ liệu...</h5></div>';
-    modal.show();
-    
-    try {
-        const response = await fetch(`/file-manager/scan/${type}/${filename}`);
-        const data = await response.json();
-        
-        if (data.success !== false) {
-            modalBody.innerHTML = formatResult(data, type);
-        } else {
-            modalBody.innerHTML = `<div class="alert bg-dark border-danger text-danger"><i class="fas fa-exclamation-triangle"></i> Lỗi: ${data.error}</div>`;
-        }
-    } catch (error) {
-        modalBody.innerHTML = `<div class="alert bg-dark border-danger text-danger"><i class="fas fa-exclamation-triangle"></i> Lỗi kết nối AI Engine: ${error.message}</div>`;
-    }
+// Scan file - chuyển sang trang Quét File với file được chọn sẵn
+function scanFile(type, filename) {
+    // Lưu thông tin file vào sessionStorage để trang /scan tự động load
+    sessionStorage.setItem('fm_scan_type', type);
+    sessionStorage.setItem('fm_scan_filename', filename);
+    // Chuyển hướng sang trang quét
+    window.location.href = '/scan?from_manager=1&type=' + type + '&filename=' + encodeURIComponent(filename);
 }
 
 // Delete file

@@ -1,0 +1,38 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APK files
+*.apk
+
+# Dataset
+dataset/raw_apk/
+dataset/processed/
+
+# Scan data
+scans/apk/
+scans/csv/
+
+# ngrok
+ngrok.exe
