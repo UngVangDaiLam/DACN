@@ -26,9 +26,7 @@ WINDOWS_IP_FROM_KALI = os.environ.get("WINDOWS_IP_FROM_KALI", "")
 WINDOWS_ADB_PORT     = int(os.environ.get("WINDOWS_ADB_PORT", "5556"))
  
 if not API_KEY:
-    print("⚠️  CẢNH BÁO: Chưa thiết lập MOBSF_API_KEY trong file .env — các chức năng gọi MobSF sẽ lỗi 401/403.")
-if not WINDOWS_IP_FROM_KALI:
-    print("⚠️  CẢNH BÁO: Chưa thiết lập WINDOWS_IP_FROM_KALI trong file .env — Dynamic Analyzer sẽ không kết nối được ADB.")
+    print("ℹ️  MobSF chưa cấu hình (MOBSF_API_KEY) — bỏ qua đối chiếu MobSF, dùng bộ phân tích cục bộ.")
  
 # ============ KHỞI TẠO HÀNG ĐỢI (TASK QUEUE) ============
 dynamic_task_queue = queue.Queue()
@@ -37,6 +35,7 @@ analysis_results = {} # Lưu kết quả trạng thái
 # Thêm đường dẫn để import scanner
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scanner.detect_and_classify import MalwareDetector
+from scanner.deep_analysis import analyze_deep, combine_verdict
  
 import numpy as np
  
@@ -90,8 +89,10 @@ def jsonify(*args, **kwargs):
     elif kwargs:
         kwargs = numpy_safe(kwargs)
     return _orig_jsonify(*args, **kwargs)
-app.config['SCAN_FOLDER'] = r'C:\scans'
-app.config['UPLOAD_FOLDER'] = r'C:\scans\uploads'
+# Thư mục lưu file quét: cấu hình qua SCAN_FOLDER trong .env (mặc định C:\scans trên Windows, ./scans nơi khác)
+_default_scan = r'C:\scans' if os.name == 'nt' else os.path.join(os.path.dirname(_APP_DIR), 'scans')
+app.config['SCAN_FOLDER'] = os.environ.get('SCAN_FOLDER', _default_scan)
+app.config['UPLOAD_FOLDER'] = os.path.join(app.config['SCAN_FOLDER'], 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
  
 # Tạo thư mục
@@ -213,14 +214,37 @@ def upload_to_mobsf(filepath):
  
     return sorted(files, key=lambda x: x['modified'], reverse=True)
  
+ALLOWED_SUBFOLDERS = {'csv', 'apk', 'other'}
+
+def safe_scan_path(subfolder, filename):
+    """Trả về đường dẫn tuyệt đối an toàn trong SCAN_FOLDER, hoặc None nếu không hợp lệ (chống path traversal)."""
+    if subfolder not in ALLOWED_SUBFOLDERS:
+        return None
+    base = os.path.realpath(os.path.join(app.config['SCAN_FOLDER'], subfolder))
+    target = os.path.realpath(os.path.join(base, filename))
+    if os.path.dirname(target) != base:
+        return None
+    return target
+
 def save_uploaded_file(file, subfolder):
     """Lưu file với tên hoàn toàn sạch (chỉ timestamp + số) để tránh Errno 22"""
     ext = os.path.splitext(file.filename)[1].lower()  # .apk / .csv
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    new_filename = f"scan_{timestamp}{ext}"           # VD: scan_20260507_175000.apk
+    new_filename = f"scan_{timestamp}_{uuid.uuid4().hex[:12]}{ext}"
     filepath = os.path.join(app.config['SCAN_FOLDER'], subfolder, new_filename)
     file.save(filepath)
     return new_filename, filepath
+
+
+def attach_deep_analysis(result, filepath):
+    """Shared report for upload and file-manager scans; keep ML output compatible."""
+    deep = analyze_deep(filepath)
+    result['deep'] = deep
+    result['verdict'] = combine_verdict(
+        result.get('class', '1'), result.get('confidence', 0),
+        deep['rule_score'], ml_reliable=not result.get('unreliable', False))
+    result['version'] = deep['info']['version_name']
+    return deep, result['verdict']
  
 # ============ ROUTES ============
 @app.route('/')
@@ -275,7 +299,7 @@ def scan_apk():
         _log(f"Đã đọc {len(file_bytes):,} bytes từ upload stream.")
  
         # 2. Lưu bytes xuống disk (để MobSF upload sau)
-        filename = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.apk"
+        filename = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:12]}.apk"
         filepath = os.path.join(app.config['SCAN_FOLDER'], 'apk', filename)
         with open(filepath, 'wb') as _dst:
             _dst.write(file_bytes)
@@ -289,7 +313,9 @@ def scan_apk():
             raise Exception(ai_result.get('error', 'Lỗi phân tích APK'))
  
         _log(f"Trích xuất xong {ai_result.get('total_permissions', 0)} quyền từ AndroidManifest.xml.")
-        _log(f"Số đặc trưng khớp với model: {ai_result.get('feature_count', 0)}/{len(detector.scaler.mean_)}.")
+        _log(f"Số đặc trưng khớp với model: {ai_result.get('feature_count', 0)}/{len(detector.scaler.mean_) if ai_result.get('unreliable') else ai_result.get('feature_count', 0)}.")
+        if ai_result.get('warning'):
+            _log(ai_result['warning'], level='WARN')
         _log(f"SHA256: {ai_result.get('sha256', 'N/A')}")
  
         vec = ai_result.get('binary_vector_sample', [])
@@ -308,23 +334,41 @@ def scan_apk():
         if 'confidence' in ai_result:
             ai_result['confidence'] = round(float(ai_result['confidence']), 2)
  
-        # 4. Xếp hàng MobSF
-        task_id = str(uuid.uuid4())
-        dynamic_task_queue.put({'task_id': task_id, 'filepath': filepath, 'filename': filename})
-        analysis_results[task_id] = {
-            "status": "queued",
-            "message": f"Đang xếp hàng... (Vị trí: {dynamic_task_queue.qsize()})"
-        }
-        _log("Đã xếp hàng MobSF Dynamic Analysis.")
+        # 4. Phân tích chuyên sâu cục bộ (chữ ký, manifest, bytecode, chuỗi, che giấu) + kết hợp với AI
+        _log("Đang chạy phân tích chuyên sâu cục bộ (chữ ký / manifest / bytecode / chuỗi)...")
+        try:
+            deep, verdict = attach_deep_analysis(ai_result, filepath)
+            for key in ('layer2', 'layer3'):
+                layer = deep[key]
+                _log(f"{key}: {layer['finding_count']} phát hiện, "
+                     f"{layer['methods_scanned']} hàm, trạng thái {layer['status']}.")
+            _log(f"Luật hành vi: {deep['rule_score']}/100 ({len(deep['findings'])} phát hiện).")
+            _log(f"KẾT LUẬN TỔNG HỢP: {verdict['verdict']} — điểm {verdict['final_score']}/100",
+                 level='SUCCESS' if verdict['level'] == 'safe' else 'WARN')
+        except Exception as e:
+            ai_result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
+            _crash(f"analyze_deep thất bại cho file: {file.filename}", exc=e)
+            _log(f"Phân tích chuyên sâu lỗi: {e}", level='ERROR')
+
+        # 5. (Tuỳ chọn) đối chiếu MobSF — chỉ khi đã cấu hình API key
+        task_id = None
+        if API_KEY:
+            task_id = str(uuid.uuid4())
+            analysis_results[task_id] = {
+                "status": "queued",
+                "message": f"Đang xếp hàng... (Vị trí: {dynamic_task_queue.qsize() + 1})"
+            }
+            dynamic_task_queue.put({'task_id': task_id, 'filepath': filepath, 'filename': filename})
+            _log("Đã xếp hàng MobSF để đối chiếu.")
         _log("=== HOÀN TẤT PHÂN TÍCH TĨNH ===", level='SUCCESS')
- 
+
         return jsonify({
             'success': True,
             'ai_result': ai_result,
             'task_id': task_id,
-            'message': 'AI đã quét xong, đang chuyển sang MobSF...'
+            'message': 'Đã phân tích xong.'
         })
- 
+
     except Exception as e:
         _log(f"LỖI NGHIÊM TRỌNG: {str(e)}", level='ERROR')
         _crash(f"scan_apk thất bại cho file: {file.filename}", exc=e)
@@ -424,8 +468,10 @@ def file_manager():
 @app.route('/file-manager/scan/<subfolder>/<path:filename>')
 def scan_file_in_manager(subfolder, filename):
     """Quét file trong file manager"""
-    filepath = os.path.join(app.config['SCAN_FOLDER'], subfolder, filename)
- 
+    filepath = safe_scan_path(subfolder, filename)
+    if filepath is None:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+
     if not os.path.exists(filepath):
         return jsonify({'success': False, 'error': 'File not found'}), 404
  
@@ -434,11 +480,17 @@ def scan_file_in_manager(subfolder, filename):
             result = detector.analyze_csv(filepath, filename)
         elif subfolder == 'apk':
             import tempfile, shutil
-            with tempfile.NamedTemporaryFile(suffix='.apk', delete=False, dir='C:\\scans') as tmp:
+            with tempfile.NamedTemporaryFile(suffix='.apk', delete=False, dir=app.config['UPLOAD_FOLDER']) as tmp:
                 tmp_path = tmp.name
             shutil.copy2(filepath, tmp_path)
             try:
                 result = detector.analyze_apk(tmp_path, filename)
+                if result.get('success'):
+                    try:
+                        attach_deep_analysis(result, tmp_path)
+                    except Exception as e:
+                        result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
+                        _crash('Phân tích tầng 2/3 trong file manager thất bại', exc=e)
             finally:
                 try: os.remove(tmp_path)
                 except: pass
@@ -485,8 +537,10 @@ def file_manager_upload():
 @app.route('/file-manager/delete/<subfolder>/<path:filename>', methods=['DELETE'])
 def delete_file(subfolder, filename):
     """Xóa file"""
-    filepath = os.path.join(app.config['SCAN_FOLDER'], subfolder, filename)
- 
+    filepath = safe_scan_path(subfolder, filename)
+    if filepath is None:
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+
     if os.path.exists(filepath):
         os.remove(filepath)
         return jsonify({'success': True, 'message': f'Đã xóa {filename}'})
@@ -521,5 +575,8 @@ if __name__ == '__main__':
     print("🔍 Scan CSV/APK: http://localhost:5000/scan")
     print("📁 File Manager: http://localhost:5000/file-manager")
     print("="*60)
-    app.run(debug=True, host='0.0.0.0', port=5000)
- 
+    # Mặc định chỉ lắng nghe localhost, tắt debugger (debugger Werkzeug cho phép chạy code từ xa).
+    # Bật lại khi cần: FLASK_DEBUG=1 / APP_HOST=0.0.0.0 trong .env
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1",
+            host=os.environ.get("APP_HOST", "127.0.0.1"), port=5000)
+

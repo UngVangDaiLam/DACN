@@ -357,9 +357,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="col-md-6 mb-3 text-start">
                     <div class="p-4 h-100 rounded-3" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
                         <p class="mb-3"><i class="fas fa-file text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">File Target:</strong> <span class="text-white">${escapeHtml(data.filename || 'File')}</span></p>
-                        <p class="mb-3"><i class="fas fa-box text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Package ID:</strong> <code class="text-info fs-6">${data.package_name || 'N/A'}</code></p>
-                        <p class="mb-3"><i class="fas fa-tag text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Tên App:</strong> <span class="text-white">${data.app_name || 'Không xác định'}</span></p>
-                        <p class="mb-0"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${data.version || 'N/A'}</span></p>
+                        <p class="mb-3"><i class="fas fa-box text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Package ID:</strong> <code class="text-info fs-6">${escapeHtml(data.package_name || 'N/A')}</code></p>
+                        <p class="mb-3"><i class="fas fa-tag text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Tên App:</strong> <span class="text-white">${escapeHtml(data.app_name || 'Không xác định')}</span></p>
+                        <p class="mb-0"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${escapeHtml(data.version || 'N/A')}</span></p>
                     </div>
                 </div>
             </div>
@@ -574,22 +574,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            <!-- KHU VỰC MOBSF STATIC ANALYSIS -->
-            <div class="col-12 mt-4" id="mobsf-status-area">
+            <!-- BÁO CÁO PHÂN TÍCH CHUYÊN SÂU CỤC BỘ -->
+            <div class="col-12 mt-4" id="code-layers-area">${renderCodeLayers(data)}</div>
+            <div class="col-12 mt-4" id="deep-report-area">${renderDeepSummary(data)}</div>
+
+            ${window._currentTaskId ? `
+            <!-- (Tuỳ chọn) MobSF — chỉ hiện khi server đã cấu hình MobSF -->
+            <div class="col-12" id="mobsf-status-area">
                 <div id="mobsf-status-card" class="p-3 rounded-3 d-flex align-items-center gap-3"
                      style="background: rgba(168,85,247,0.07); border: 1px solid rgba(168,85,247,0.3); transition: all 0.4s ease;">
                     <div id="mobsf-spinner" class="spinner-border spinner-border-sm flex-shrink-0" style="color: var(--neon-purple);"></div>
                     <div class="flex-grow-1">
                         <div class="fw-bold text-white" style="font-size:0.9rem;">
-                            <i class="fas fa-microscope me-2" style="color:var(--neon-purple);"></i> MobSF Static Analysis
+                            <i class="fas fa-microscope me-2" style="color:var(--neon-purple);"></i> MobSF (đối chiếu bên ngoài)
                         </div>
-                        <div class="text-light small mt-1" id="mobsf-status-text" style="opacity:0.8;">
-                            Đang upload & kích hoạt phân tích tĩnh trên Kali...
-                        </div>
+                        <div class="text-light small mt-1" id="mobsf-status-text" style="opacity:0.8;">Đang xử lý...</div>
                     </div>
                     <div id="mobsf-action-btn" class="flex-shrink-0"></div>
                 </div>
-            </div>
+            </div>` : ''}
 
             <div class="col-12 mt-3 text-center">
                 <button onclick="exportToPDF()" class="btn btn-cyber px-5 py-2 fw-bold"><i class="fas fa-download me-2"></i> Xuất Báo Cáo PDF</button>
@@ -732,91 +735,148 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 4000);
     }
 
-    // ===== HIỂN THỊ BÁO CÁO MOBSF CHUYÊN SÂU =====
-    window.openDeepAnalysis = async function() {
-        if (!window._mobsfHash) { alert("Chưa có dữ liệu MobSF."); return; }
-        const btn = document.querySelector('button[onclick="openDeepAnalysis()"]');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Đang tải...'; }
-        try {
-            const res = await fetch('/api/mobsf_report/' + window._mobsfHash);
-            const report = await res.json();
-            if (!report.success) throw new Error(report.error || 'Lỗi không xác định');
-            displayDeepReport(report);
-        } catch(e) {
-            alert("Không tải được báo cáo: " + e.message);
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-microscope me-2"></i> Xem Phân Tích Chuyên Sâu'; }
-        }
+    // ===== BÁO CÁO CHUYÊN SÂU CỤC BỘ (không cần MobSF) =====
+    const SEV = {
+        critical: ['#ef4444', 'NGHIÊM TRỌNG'], high: ['#f43f5e', 'CAO'], medium: ['#facc15', 'TRUNG BÌNH'],
+        low: ['#38bdf8', 'THẤP'], info: ['#94a3b8', 'THÔNG TIN']
     };
+    const LEVEL_COLOR = { danger: '#f43f5e', warning: '#fb923c', caution: '#facc15', safe: '#4ade80' };
 
-    function displayDeepReport(r) {
-        const score = r.security_score && r.security_score.security_score !== undefined ? r.security_score.security_score : null;
-        const scoreColor = score === null ? '#94a3b8' : score >= 7 ? '#f43f5e' : score >= 4 ? '#facc15' : '#4ade80';
+    function sevBadge(sev) {
+        const [c, label] = SEV[sev] || SEV.info;
+        return `<span class="badge me-2" style="background:${c}22;color:${c};border:1px solid ${c}88;min-width:84px;">${label}</span>`;
+    }
 
-        const dangerPermsHtml = r.dangerous_permissions && r.dangerous_permissions.length
-            ? r.dangerous_permissions.map(p => `<span class="badge me-1 mb-1" style="background:rgba(244,63,94,0.15);color:#fda4af;border:1px solid rgba(244,63,94,0.4);">🔴 ${escapeHtml(p)}</span>`).join('')
-            : '<span class="text-success small">✅ Không có quyền nguy hiểm</span>';
+    function renderCodeLayers(data) {
+        if (data.deep_error) return `<div class="alert alert-warning">${escapeHtml(data.deep_error)}</div>`;
+        const deep = data.deep;
+        if (!deep || !deep.layer2 || !deep.layer3) return '';
+        const origins = {application: 'Mã ứng dụng', third_party: 'Thư viện (theo tiền tố)', unknown: 'Chưa xác định nguồn mã'};
+        const api = c => escapeHtml(`${c.class_name}->${c.method_name}${c.descriptor} @${c.offset}`);
+        const evidence = f => {
+            const calls = f.calls || [];
+            const sources = f.sources || [], sinks = f.sinks || [];
+            return `<div class="font-monospace small text-info" style="overflow-wrap:anywhere;">${escapeHtml(`${f.class_name}->${f.method_name}${f.descriptor}`)}</div>
+                <div class="small text-light mb-2">${escapeHtml(origins[f.origin] || origins.unknown)}</div>
+                ${calls.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('')}
+                ${sources.length ? '<div class="small text-warning mt-2">API nhạy cảm:</div>' + sources.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('') : ''}
+                ${sinks.length ? '<div class="small text-warning mt-2">API mạng:</div>' + sinks.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('') : ''}
+                ${(f.strings || []).map(s => `<div class="small text-light mt-2" style="overflow-wrap:anywhere;">Chuỗi @${s.offset}, ${s.length} ký tự: <code>${escapeHtml(s.value)}${s.preview_truncated ? '…' : ''}</code></div>`).join('')}`;
+        };
+        const card = (title, layer) => {
+            const counts = layer.counts_by_origin || {}, findings = layer.findings || [];
+            const artifacts = layer.artifacts;
+            const files = artifacts ? [...artifacts.embedded_payloads, ...artifacts.native_libs] : [];
+            return `<div class="col-lg-6"><div class="card p-3 h-100">
+                <h5 class="text-info">${title}</h5>
+                <div class="text-light small mb-2">${layer.finding_count} phát hiện trong ${layer.methods_scanned} hàm đã kiểm tra.
+                    ${layer.status === 'partial' ? `<span class="text-warning">Phân tích chưa đầy đủ (${layer.analysis_errors} lỗi).</span>` : 'Đã phân tích xong.'}</div>
+                <div class="small text-light mb-3">Mã ứng dụng: ${counts.application || 0} · Thư viện: ${counts.third_party || 0} · Chưa xác định: ${counts.unknown || 0}</div>
+                ${artifacts ? `<div class="small text-light mb-2">Entropy DEX: ${artifacts.dex_entropy} · Tỷ lệ lớp tên ngắn: ${Math.round(artifacts.obfuscated_class_ratio * 100)}%</div>
+                    <details class="small text-light mb-3"><summary>Payload và thư viện native được liệt kê (${files.length})</summary>${files.map(p => `<div style="overflow-wrap:anywhere;">${escapeHtml(p)}</div>`).join('') || 'Không có mục được liệt kê.'}</details>` : ''}
+                <details><summary class="text-white">Xem bằng chứng (${findings.length}${layer.truncated ? '/' + layer.finding_count : ''})</summary>
+                    <div style="max-height:480px;overflow:auto;">${findings.map(f => `<div class="border-bottom border-secondary py-3">${sevBadge(f.severity)}<strong class="text-white small">${escapeHtml(f.title)}</strong>${evidence(f)}</div>`).join('') || '<p class="small text-light mt-2">Chưa tìm thấy dấu hiệu trong phạm vi luật hiện có.</p>'}</div>
+                </details>
+                ${layer.truncated ? '<div class="small text-warning">Danh sách bằng chứng đã được giới hạn; tổng số phát hiện vẫn được thống kê.</div>' : ''}
+                <ul class="small text-light mt-3 mb-0">${layer.limitations.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>
+            </div></div>`;
+        };
+        return `<div class="text-light small mb-3">Tầng 2 và 3 cung cấp bằng chứng để kiểm tra, chưa được cộng thêm vào điểm rủi ro tổng hợp.</div>
+            <div class="row g-3">${card('Tầng 2 — Che giấu và nạp mã', deep.layer2)}${card('Tầng 3 — Nguy cơ rò rỉ dữ liệu', deep.layer3)}</div>`;
+    }
 
-        const urlsHtml = r.urls && r.urls.length
-            ? r.urls.filter(u => u).map(u => `<li class="list-group-item bg-transparent text-info border-secondary small text-truncate">🔗 ${escapeHtml(u)}</li>`).join('')
-            : '<li class="list-group-item bg-transparent text-muted border-secondary small">Không phát hiện URL đáng ngờ</li>';
+    function renderDeepSummary(data) {
+        const deep = data.deep, v = data.verdict;
+        if (!deep || !v) return '';
+        const color = LEVEL_COLOR[v.level] || '#94a3b8';
+        const top = (deep.findings || []).filter(f => f.score > 0).slice(0, 6);
+        const topHtml = top.length
+            ? top.map(f => `<li class="list-group-item bg-transparent border-secondary text-white small d-flex align-items-start">
+                    ${sevBadge(f.severity)}<div><strong>${escapeHtml(f.title)}</strong>${f.detail ? `<div style="opacity:.65;">${escapeHtml(f.detail)}</div>` : ''}</div></li>`).join('')
+            : '<li class="list-group-item bg-transparent border-secondary text-success small">✅ Không có phát hiện đáng chú ý.</li>';
+        const agree = v.engines_agree === null || v.engines_agree === undefined ? '' : v.engines_agree
+            ? '<span class="text-success small"><i class="fas fa-handshake me-1"></i>Hai bộ phân tích đồng thuận</span>'
+            : '<span class="text-warning small"><i class="fas fa-triangle-exclamation me-1"></i>Hai bộ phân tích bất đồng — nên kiểm tra thủ công</span>';
+        const bar = (label, val, c) => val === null || val === undefined ? '' : `
+            <div class="mb-2"><div class="d-flex justify-content-between small text-light"><span>${label}</span><span>${Math.round(val)}/100</span></div>
+            <div style="height:6px;background:rgba(255,255,255,.1);border-radius:3px;"><div style="height:6px;width:${Math.min(100, val)}%;background:${c};border-radius:3px;"></div></div></div>`;
+        const mlNote = v.ml_risk === null || v.ml_risk === undefined
+            ? '<div class="text-warning small mb-2"><i class="fas fa-circle-info me-1"></i>Mô hình học máy tĩnh chưa được train — kết luận dựa trên các lớp phân tích còn lại.</div>' : '';
+        return `
+        <div class="p-3 rounded-3" style="background:${color}0f;border:1px solid ${color}66;">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4 text-center">
+                    <div style="font-size:3.6rem;font-weight:900;line-height:1;color:${color};">${v.final_score}</div>
+                    <div class="text-light small" style="opacity:.7;">ĐIỂM RỦI RO TỔNG HỢP /100</div>
+                    <div class="fw-bold mt-2" style="color:${color};">${escapeHtml(v.verdict)}</div>
+                </div>
+                <div class="col-md-8">
+                    <h6 class="text-white mb-3"><i class="fas fa-layer-group me-2" style="color:var(--neon-purple);"></i> Phân tích đa lớp (học máy + luật hành vi + chữ ký + bytecode)</h6>
+                    ${mlNote}
+                    ${bar('Mô hình học máy', v.ml_risk, '#a855f7')}
+                    ${bar('Luật hành vi / bytecode / manifest', v.rule_score, '#38bdf8')}
+                    ${agree}
+                </div>
+            </div>
+            <ul class="list-group list-group-flush mt-3">${topHtml}</ul>
+            <div class="text-center mt-3">
+                <button class="btn btn-cyber px-4 py-2 fw-bold" onclick="openDeepAnalysis()"><i class="fas fa-microscope me-2"></i> Xem Phân Tích Chuyên Sâu</button>
+            </div>
+        </div>`;
+    }
+
+    window.openDeepAnalysis = function() {
+        const data = window._lastScanData;
+        if (!data || !data.deep) { alert('Chưa có dữ liệu phân tích chuyên sâu.'); return; }
+        const d = data.deep, v = data.verdict, i = d.info, m = d.manifest, bc = d.bytecode, ob = d.obfuscation, ce = d.certificate;
+        const kv = (k, val) => `<div class="col-6"><span class="text-light" style="opacity:.7;">${k}:</span><br><span class="text-white" style="word-break:break-all;">${escapeHtml(String(val))}</span></div>`;
+        const card = (title, icon, body) => `<div class="card p-4 mb-3"><h6 class="text-info mb-3"><i class="fas ${icon} me-2"></i>${title}</h6>${body}</div>`;
+        const badges = (arr, c) => arr && arr.length ? arr.map(x => `<span class="badge me-1 mb-1" style="background:${c}22;color:${c};border:1px solid ${c}66;">${escapeHtml(x)}</span>`).join('') : '<span class="text-muted small">Không có</span>';
+        const list = (arr) => arr && arr.length ? `<ul class="list-group list-group-flush" style="max-height:220px;overflow-y:auto;">${arr.map(x => `<li class="list-group-item bg-transparent text-info border-secondary small text-truncate">${escapeHtml(x)}</li>`).join('')}</ul>` : '<span class="text-muted small">Không có</span>';
+
+        const findingsHtml = (d.findings || []).map(f => `<li class="list-group-item bg-transparent border-secondary text-white small d-flex align-items-start">
+            ${sevBadge(f.severity)}<div class="flex-grow-1"><strong>${escapeHtml(f.title)}</strong> <span class="badge bg-secondary ms-1">${escapeHtml(f.category)}</span>
+            ${f.detail ? `<div style="opacity:.65;">${escapeHtml(f.detail)}</div>` : ''}</div><span class="text-light ms-2" style="opacity:.6;">+${f.score}</span></li>`).join('');
+
+        const apiHtml = (bc.suspicious_apis || []).filter(a => a.score > 0).map(a =>
+            `<tr><td class="text-white">${escapeHtml(a.label)}</td><td class="text-info">${escapeHtml(a.category)}</td><td class="text-light small">${escapeHtml(a.refs[0] || '')}</td></tr>`).join('');
+
+        const certHtml = (ce.certificates || []).map(c => `
+            <div class="row g-2 mb-2" style="font-size:.82rem;">${kv('Chủ thể', c.subject)}${kv('Nhà phát hành', c.issuer)}${kv('Hiệu lực', c.valid_from.slice(0, 10) + ' → ' + c.valid_to.slice(0, 10))}${kv('Thuật toán', c.algorithm)}
+            <div class="col-12"><span class="text-light" style="opacity:.7;">SHA256 chứng chỉ:</span><br><code class="text-warning small" style="word-break:break-all;">${escapeHtml(c.sha256)}</code></div></div>`).join('')
+            || '<span class="text-muted small">Không đọc được chứng chỉ</span>';
 
         const modal = document.createElement('div');
         modal.id = 'deep-analysis-modal';
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;overflow-y:auto;';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:9999;overflow-y:auto;';
         modal.innerHTML = `
-        <div style="max-width:900px;margin:40px auto;padding:0 16px 60px;">
+        <div style="max-width:960px;margin:40px auto;padding:0 16px 60px;">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h3 class="text-white mb-0"><i class="fas fa-microscope me-2" style="color:var(--neon-purple);"></i> Phân Tích Chuyên Sâu MobSF</h3>
-                <button onclick="document.getElementById('deep-analysis-modal').remove()" class="btn btn-outline-secondary text-white">
-                    <i class="fas fa-times"></i> Đóng
-                </button>
+                <h3 class="text-white mb-0"><i class="fas fa-microscope me-2" style="color:var(--neon-purple);"></i> Phân Tích Chuyên Sâu</h3>
+                <button onclick="document.getElementById('deep-analysis-modal').remove()" class="btn btn-outline-secondary text-white"><i class="fas fa-times"></i> Đóng</button>
             </div>
-            <div class="row g-3 mb-4">
-                <div class="col-md-8">
-                    <div class="card p-4" style="border-left:3px solid var(--neon-purple) !important;">
-                        <h6 class="text-info mb-3"><i class="fas fa-info-circle me-2"></i> Thông tin APK</h6>
-                        <div class="row g-2" style="font-size:0.85rem;">
-                            <div class="col-6"><span class="text-light" style="opacity:.7;">Package:</span><br><code class="text-info">${escapeHtml(r.package_name)}</code></div>
-                            <div class="col-6"><span class="text-light" style="opacity:.7;">Version:</span><br><span class="text-white">${escapeHtml(r.version_name)}</span></div>
-                            <div class="col-6"><span class="text-light" style="opacity:.7;">Min SDK:</span><br><span class="text-white">${escapeHtml(String(r.min_sdk))}</span></div>
-                            <div class="col-6"><span class="text-light" style="opacity:.7;">Target SDK:</span><br><span class="text-white">${escapeHtml(String(r.target_sdk))}</span></div>
-                            <div class="col-12"><span class="text-light" style="opacity:.7;">MD5:</span><br><code class="text-warning small">${escapeHtml(r.md5)}</code></div>
-                            <div class="col-12"><span class="text-light" style="opacity:.7;">SHA256:</span><br><code class="text-warning small" style="word-break:break-all;">${escapeHtml(r.sha256)}</code></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card p-4 h-100 text-center" style="border-top:3px solid ${scoreColor} !important;">
-                        <h6 class="text-light mb-3" style="opacity:.7;">Security Score</h6>
-                        <div style="font-size:4rem;font-weight:900;color:${scoreColor};line-height:1;">${score !== null ? score : 'N/A'}</div>
-                        <div class="text-light small mt-2" style="opacity:.6;">/10 (thấp = an toàn hơn)</div>
-                        <hr class="border-secondary my-3">
-                        <div class="row text-center g-2" style="font-size:0.8rem;">
-                            <div class="col-4"><div class="text-info fw-bold fs-5">${r.activities_count}</div><div class="text-light" style="opacity:.6;">Activity</div></div>
-                            <div class="col-4"><div class="text-warning fw-bold fs-5">${r.services_count}</div><div class="text-light" style="opacity:.6;">Service</div></div>
-                            <div class="col-4"><div class="text-danger fw-bold fs-5">${r.receivers_count}</div><div class="text-light" style="opacity:.6;">Receiver</div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="card p-4 mb-3">
-                <h6 class="text-danger mb-3"><i class="fas fa-shield-alt me-2"></i> Quyền Nguy Hiểm (${r.dangerous_permissions ? r.dangerous_permissions.length : 0})</h6>
-                <div>${dangerPermsHtml}</div>
-            </div>
-            <div class="card p-4 mb-3">
-                <h6 class="text-warning mb-3"><i class="fas fa-link me-2"></i> URLs phát hiện (${r.urls ? r.urls.length : 0})</h6>
-                <ul class="list-group list-group-flush" style="max-height:200px;overflow-y:auto;">${urlsHtml}</ul>
-            </div>
-            <div class="text-center mt-4">
-                <a href="${escapeHtml(r.mobsf_link)}" target="_blank" class="btn px-5 py-3 fw-bold"
-                   style="background:rgba(168,85,247,0.1);border:2px solid var(--neon-purple);color:#fff;border-radius:12px;box-shadow:0 0 20px rgba(168,85,247,0.3);">
-                    <i class="fas fa-external-link-alt me-2" style="color:var(--neon-purple);"></i> Mở Báo Cáo Đầy Đủ trên MobSF
-                </a>
-            </div>
+            ${card('Thông tin APK', 'fa-info-circle', `<div class="row g-2" style="font-size:.85rem;">
+                ${kv('Package', i.package_name)}${kv('Tên ứng dụng', i.app_name)}${kv('Version', i.version_name + ' (' + i.version_code + ')')}${kv('SDK (min / target)', i.min_sdk + ' / ' + i.target_sdk)}
+                ${kv('Kích thước', i.file_size_kb + ' KB')}${kv('Activity chính', i.main_activity)}${kv('MD5', i.md5)}${kv('SHA1', i.sha1)}
+                <div class="col-12"><span class="text-light" style="opacity:.7;">SHA256:</span><br><code class="text-warning small" style="word-break:break-all;">${escapeHtml(i.sha256)}</code></div></div>`)}
+            ${card('Tất cả phát hiện (' + d.findings.length + ')', 'fa-list-check', `<ul class="list-group list-group-flush">${findingsHtml}</ul>`)}
+            ${card('Chữ ký số — ' + (ce.signed ? 'đã ký (' + ce.schemes.join(', ') + ')' : 'KHÔNG có chữ ký'), 'fa-certificate', certHtml)}
+            ${card('Quyền cực kỳ nhạy cảm (' + m.critical_permissions.length + ')', 'fa-shield-alt', badges(m.critical_permissions.map(p => p.name.split('.').pop() + ' — ' + p.reason), '#f43f5e'))}
+            ${card('Quyền nguy hiểm (' + m.dangerous_permissions.length + ')', 'fa-triangle-exclamation', badges(m.dangerous_permissions.map(p => p.split('.').pop()), '#facc15'))}
+            ${card('Thành phần Manifest', 'fa-cubes', `<div class="row g-2 mb-2" style="font-size:.85rem;">
+                ${kv('Activity', m.components.activity ?? 0)}${kv('Service', m.components.service ?? 0)}${kv('Receiver', m.components.receiver ?? 0)}${kv('Provider', m.components.provider ?? 0)}
+                ${kv('Debuggable', m.flags.debuggable ? 'CÓ' : 'Không')}${kv('Allow backup', m.flags.allow_backup ? 'Có' : 'Không')}</div>
+                <div class="text-light small mb-1">Exported không có permission bảo vệ:</div>${list(m.exported_unprotected)}`)}
+            ${card('API nhạy cảm trong bytecode', 'fa-code', apiHtml ? `<table class="table table-sm table-dark mb-0"><thead><tr><th>Hành vi</th><th>Nhóm</th><th>Tham chiếu</th></tr></thead><tbody>${apiHtml}</tbody></table>` : '<span class="text-muted small">Không có</span>')}
+            ${card('URL phát hiện (' + bc.url_total + ' tổng, hiển thị ' + bc.urls.length + ' đáng chú ý)', 'fa-link', list(bc.urls))}
+            ${card('Che giấu / đóng gói', 'fa-mask', `<div class="row g-2" style="font-size:.85rem;">
+                ${kv('Số tệp DEX', ob.dex_count)}${kv('Entropy DEX', ob.dex_entropy)}${kv('Số lớp', ob.class_count)}${kv('Lớp tên rút gọn', Math.round(ob.obfuscated_class_ratio * 100) + '%')}
+                ${kv('Thư viện native', ob.native_libs.length + (ob.native_abis.length ? ' (' + ob.native_abis.join(', ') + ')' : ''))}${kv('Payload nhúng', ob.embedded_payloads.length ? ob.embedded_payloads.join(', ') : 'Không')}</div>`)}
+            <div class="text-center text-light small mt-3" style="opacity:.6;">Điểm: học máy ${v.ml_risk === null ? 'N/A' : Math.round(v.ml_risk)} · luật ${Math.round(v.rule_score)} → tổng hợp ${v.final_score}/100</div>
         </div>`;
         document.body.appendChild(modal);
         modal.scrollTop = 0;
-    }
+    };
 
 window.exportToPDF = function() {
     if (!window._lastScanData) { alert('Không có dữ liệu để xuất. Vui lòng quét file trước!'); return; }
@@ -985,7 +1045,7 @@ window.exportToPDF = function() {
         return recs[classId] || 'Yêu cầu phân tích chuyên sâu.';
     }
 
-    function escapeHtml(str) { return !str ? '' : str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+    function escapeHtml(str) { return str == null ? '' : String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
     // ── AUTO-LOAD TỪ FILE MANAGER ──────────────────────────────────────────
     // Nằm trong DOMContentLoaded để truy cập displayApkResult/displayCsvResult

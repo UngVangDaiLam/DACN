@@ -1,0 +1,15 @@
+.git
+.gitignore
+.vscode
+venv
+.venv
+__pycache__
+*.pyc
+*.apk
+*.exe
+*.csv
+*.log
+.env
+dataset
+TEST
+scans
