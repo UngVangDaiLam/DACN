@@ -21,8 +21,10 @@ import re
 import math
 import hashlib
 import logging
+import warnings
 from collections import Counter
 
+from androguard.core.apk import APK
 from androguard.misc import AnalyzeAPK
 from apkInspector.axml import parse_apk_for_manifest
 from apkInspector.indicators import apk_tampering_check
@@ -127,24 +129,24 @@ def _has_intent_filter(apk, itemtype, name):
         return False
 
 
-def _opcode_histogram(dex_list):
-    """Dem tan suat cac opcode trong OPCODES tren toan bo method cua APK."""
+def _opcode_histogram(dx):
+    """
+    Dem tan suat cac opcode trong OPCODES tren toan bo method cua APK.
+    Nhan dx (Analysis): o androguard 4.x, dex.get_methods() tra MethodIdItem
+    (khong co get_code) nen phai duyet qua dx.get_methods().
+    """
     counts = Counter()
     total = 0
-    for dex in dex_list:
-        try:
-            for method in dex.get_methods():
-                code = method.get_code()
-                if not code:
-                    continue
-                for instr in code.get_bc().get_instructions():
-                    name = instr.get_name()
-                    total += 1
-                    if name in OPCODES:
-                        counts[name] += 1
-        except Exception:
+    for m in (dx.get_methods() if dx is not None else []):
+        if m.is_external():
             continue
+        for instr in m.get_method().get_instructions():
+            name = instr.get_name()
+            total += 1
+            if name in OPCODES:
+                counts[name] += 1
     if total == 0:
+        warnings.warn("Khong dem duoc lenh DEX nao, cac cot opcode__* = 0.0")
         return {f"opcode__{o}": 0.0 for o in OPCODES}
     return {f"opcode__{o}": round(counts.get(o, 0) / total, 6) for o in OPCODES}
 
@@ -259,7 +261,12 @@ def extract_features(apk_path: str) -> dict:
     Tra ve dict CHINH XAC cac khoa trong FEATURE_SCHEMA (khong thua, khong thieu),
     cong them metadata (khong dua vao model): sha256, package_name, manifest_source.
     """
-    a, d, dx = AnalyzeAPK(apk_path)
+    try:
+        a, d, dx = AnalyzeAPK(apk_path)
+    except Exception as e:
+        # DEX bi lam hong -> van doc manifest/quyen/component, opcode = 0.0
+        warnings.warn(f"AnalyzeAPK loi, chi doc manifest: {e!r}")
+        a, d, dx = APK(apk_path), [], None
     with open(apk_path, "rb") as f:
         apk_bytes = f.read()
 
@@ -299,8 +306,9 @@ def extract_features(apk_path: str) -> dict:
         features["dex_entropy"] = 0.0
 
     try:
-        features.update(_opcode_histogram(d))
-    except Exception:
+        features.update(_opcode_histogram(dx))
+    except Exception as e:
+        warnings.warn(f"Loi dem opcode: {e!r}")
         features.update({f"opcode__{o}": 0.0 for o in OPCODES})
 
     ordered = {k: features.get(k, 0) for k in FEATURE_SCHEMA}
