@@ -1,4 +1,4 @@
-r"""
+﻿r"""
 build_static_dataset.py
 Quet toan bo APK that trong dataset/raw_apk/{malicious/<nhom>,benign}/,
 goi extract_features() (dung chung voi apk_analyzer.py) cho tung file,
@@ -57,7 +57,7 @@ def main():
         sys.exit(1)
 
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
-    fieldnames = FEATURE_SCHEMA + ["sha256", "package_name", "label"]
+    fieldnames = FEATURE_SCHEMA + ["sha256", "package_name", "manifest_source", "label"]
 
     ok, fail = 0, 0
     t0 = time.time()

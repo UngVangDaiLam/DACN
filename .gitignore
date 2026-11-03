@@ -36,3 +36,10 @@ scans/csv/
 
 # ngrok
 ngrok.exe
+
+extract_malware_old.py
+candidates_*.csv
+
+*.bak
+models/static_model.pkl
+models/static_label_encoder.pkl

@@ -132,10 +132,19 @@ def main():
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     print(f"\nDo chinh xac tren tap test: {acc:.4f}")
+    all_labels = list(range(len(le.classes_)))
+    missing = [le.classes_[i] for i in all_labels if i not in set(y_test)]
+    if missing:
+        print("\n" + "!" * 60)
+        print(f"CANH BAO QUAN TRONG: tap test KHONG co mau nao cua lop {missing}.")
+        print("Accuracy/precision/recall o duoi KHONG CO Y NGHIA - chua duoc dua vao bao cao.")
+        print("Can them mau cho cac lop nay roi build + train lai.")
+        print("!" * 60)
     print("\nBao cao phan loai:")
-    print(classification_report(y_test, y_pred, target_names=le.classes_, zero_division=0))
-    print("Ma tran nham lan:")
-    print(confusion_matrix(y_test, y_pred))
+    print(classification_report(y_test, y_pred, labels=all_labels,
+                                target_names=le.classes_, zero_division=0))
+    print("Ma tran nham lan (hang = that, cot = du doan), thu tu lop:", list(le.classes_))
+    print(confusion_matrix(y_test, y_pred, labels=all_labels))
 
     os.makedirs(MODEL_DIR, exist_ok=True)
     joblib.dump(clf, MODEL_PATH)
@@ -146,7 +155,7 @@ def main():
     print(f"\nDa luu model: {MODEL_PATH}")
     print(f"Da luu label encoder: {ENCODER_PATH}")
     print(f"Da luu feature schema: {SCHEMA_PATH}")
-    print("\nLUU Y: day la model moi (Tang 1 tinh, dung schema 71 dac trung co dinh).")
+    print("\nLUU Y: day la model moi (Tang 1 tinh, dung schema 73 dac trung co dinh).")
     print("Model nay KHONG tuong thich voi models/*.pkl cu (dynamic/syscalls) - can sua")
     print("scanner/detect_and_classify.py de dung model + schema moi nay khi suy luan (inference).")
 

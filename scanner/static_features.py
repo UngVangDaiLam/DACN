@@ -2,23 +2,35 @@
 """
 Module dung chung de trich dac trung TINH that tu APK.
 QUAN TRONG: day la noi DUY NHAT dinh nghia bo dac trung Tang 1.
-Ca luc train (build_static_dataset.py) va luc app chay that (apk_analyzer.py)
+Ca luc train (build_static_dataset.py) va luc app chay that (detect_and_classify.py)
 deu phai import va goi dung ham extract_features() trong file nay -
 khong duoc tu suy doan / dem cot / them dummy o bat ky noi nao khac.
-Do la nguyen nhan gay loi feature-mismatch cua ban dau.
+
+PHIEN BAN 2 (chong anti-analysis):
+- Ma doc hien dai co tinh lam meo AndroidManifest.xml (chen chunk la, sai header size)
+  khien androguard doc ra package=None, 0 quyen. Khi do module tu chuyen sang doc
+  manifest bang apkInspector (thu vien viet rieng cho APK bi tamper).
+- Them 2 dac trung: manifest_tampered, zip_tampered (0/1) tu apkInspector.indicators.
+- Sua is_debuggable / is_allow_backup: androguard 4.x KHONG co 2 ham nay
+  (ban cu luon tra 0) -> nay doc truc tiep thuoc tinh trong <application>.
 """
 
+import io
 import os
+import re
 import math
 import hashlib
+import logging
 from collections import Counter
 
 from androguard.misc import AnalyzeAPK
+from apkInspector.axml import parse_apk_for_manifest
+from apkInspector.indicators import apk_tampering_check
+
+logging.getLogger("apkInspector").setLevel(logging.ERROR)
 
 # ===================== SCHEMA DAC TRUNG (CO DINH) =====================
 
-# Danh sach quyen dang chu y (co the mo rong them sau, nhung phai retrain
-# lai toan bo neu doi danh sach nay).
 PERMISSIONS = [
     "android.permission.READ_SMS",
     "android.permission.SEND_SMS",
@@ -52,8 +64,6 @@ PERMISSIONS = [
     "android.permission.BLUETOOTH",
 ]
 
-# Mot tap con opcode Dalvik pho bien, co dinh (KHONG phu thuoc vao batch
-# dang xu ly) -> dam bao vector luon cung do dai bat ke APK nao.
 OPCODES = [
     "invoke-virtual", "invoke-direct", "invoke-static", "invoke-interface",
     "invoke-super", "move-result", "move-result-object", "new-instance",
@@ -64,21 +74,27 @@ OPCODES = [
 ]
 
 MANIFEST_FLAGS = ["is_debuggable", "is_allow_backup", "has_native_lib"]
+TAMPER_FLAGS = ["manifest_tampered", "zip_tampered"]
 COMPONENT_COUNTS = [
     "num_activities", "num_services", "num_receivers", "num_providers",
     "num_exported_activities", "num_exported_services", "num_exported_receivers",
 ]
 MISC_NUMERIC = ["min_sdk", "target_sdk", "file_size_kb", "dex_entropy", "num_permissions"]
 
-# Thu tu cot CO DINH, dung cho ca train va inference.
+# Thu tu cot CO DINH (73 cot), dung cho ca train va inference.
 FEATURE_SCHEMA = (
     [f"perm__{p.split('.')[-1]}" for p in PERMISSIONS]
     + MANIFEST_FLAGS
+    + TAMPER_FLAGS
     + COMPONENT_COUNTS
     + MISC_NUMERIC
     + [f"opcode__{o}" for o in OPCODES]
 )
 
+_COMPONENT_TAGS = ("activity", "service", "receiver", "provider")
+
+
+# ===================== HAM PHU =====================
 
 def _shannon_entropy(data: bytes) -> float:
     if not data:
@@ -90,6 +106,17 @@ def _shannon_entropy(data: bytes) -> float:
         p = c / total
         entropy -= p * math.log2(p)
     return round(entropy, 4)
+
+
+def _to_int(v) -> int:
+    try:
+        return int(str(v).strip(), 0)
+    except Exception:
+        return 0
+
+
+def _flag_true(v) -> int:
+    return int(str(v).strip().lower() in ("true", "1", "-1", "0xffffffff"))
 
 
 def _has_intent_filter(apk, itemtype, name):
@@ -122,66 +149,151 @@ def _opcode_histogram(dex_list):
     return {f"opcode__{o}": round(counts.get(o, 0) / total, 6) for o in OPCODES}
 
 
-def extract_features(apk_path: str) -> dict:
-    """
-    Tra ve dict CHINH XAC cac khoa trong FEATURE_SCHEMA (khong thua, khong thieu),
-    cong them vai truong metadata (khong dua vao model): sha256, package_name.
-    """
-    a, d, dx = AnalyzeAPK(apk_path)
+# ===================== DOC MANIFEST: 2 NGUON =====================
 
-    perms = set(a.get_permissions())
-    features = {}
-
-    for p in PERMISSIONS:
-        features[f"perm__{p.split('.')[-1]}"] = int(p in perms)
-
-    try:
-        features["is_debuggable"] = int(bool(a.is_debuggable()))
-    except Exception:
-        features["is_debuggable"] = 0
-    try:
-        features["is_allow_backup"] = int(bool(a.is_allow_backup()))
-    except Exception:
-        features["is_allow_backup"] = 0
-    try:
-        libs = a.get_libraries() if hasattr(a, "get_libraries") else []
-        has_so = any(f.endswith(".so") for f in a.get_files())
-        features["has_native_lib"] = int(bool(libs) or has_so)
-    except Exception:
-        features["has_native_lib"] = 0
-
+def _manifest_androguard(a) -> dict:
+    """Doc manifest bang androguard (nguon chinh)."""
     activities = a.get_activities() or []
     services = a.get_services() or []
     receivers = a.get_receivers() or []
     providers = a.get_providers() or []
+    allow_backup = a.get_attribute_value("application", "allowBackup")
+    return {
+        "package": a.get_package() or None,
+        "perms": set(a.get_permissions() or []),
+        "num_activities": len(activities),
+        "num_services": len(services),
+        "num_receivers": len(receivers),
+        "num_providers": len(providers),
+        "num_exported_activities": sum(1 for c in activities if _has_intent_filter(a, "activity", c)),
+        "num_exported_services": sum(1 for c in services if _has_intent_filter(a, "service", c)),
+        "num_exported_receivers": sum(1 for c in receivers if _has_intent_filter(a, "receiver", c)),
+        "min_sdk": _to_int(a.get_min_sdk_version() or 0),
+        "target_sdk": _to_int(a.get_target_sdk_version() or 0),
+        "is_debuggable": _flag_true(a.get_attribute_value("application", "debuggable")),
+        # Android mac dinh allowBackup = true neu khong khai bao
+        "is_allow_backup": 1 if allow_backup is None else _flag_true(allow_backup),
+    }
 
-    features["num_activities"] = len(activities)
-    features["num_services"] = len(services)
-    features["num_receivers"] = len(receivers)
-    features["num_providers"] = len(providers)
-    features["num_exported_activities"] = sum(
-        1 for c in activities if _has_intent_filter(a, "activity", c))
-    features["num_exported_services"] = sum(
-        1 for c in services if _has_intent_filter(a, "service", c))
-    features["num_exported_receivers"] = sum(
-        1 for c in receivers if _has_intent_filter(a, "receiver", c))
 
+def _attr(tag_text: str, name: str):
+    m = re.search(r'\b(?:\w+:)?' + re.escape(name) + r'="([^"]*)"', tag_text)
+    return m.group(1) if m else None
+
+
+def _manifest_from_xml(xml: str) -> dict:
+    """Phan tich XML (do apkInspector giai ma) - quy tac dem giong androguard."""
+    res = {k: 0 for k in COMPONENT_COUNTS}
+    res.update({"package": None, "perms": set(), "min_sdk": 0, "target_sdk": 0,
+                "is_debuggable": 0, "is_allow_backup": 1})
+
+    m = re.search(r"<manifest\b[^>]*>", xml)
+    if m:
+        res["package"] = _attr(m.group(0), "package")
+
+    # Chi dem <uses-permission> (khong dem uses-permission-sdk-23) giong androguard
+    for tag in re.findall(r"<uses-permission[\s>][^>]*>?", xml):
+        name = _attr(tag, "name")
+        if name:
+            res["perms"].add(name)
+
+    m = re.search(r"<uses-sdk\b[^>]*>", xml)
+    if m:
+        res["min_sdk"] = _to_int(_attr(m.group(0), "minSdkVersion") or 0)
+        res["target_sdk"] = _to_int(_attr(m.group(0), "targetSdkVersion") or 0)
+
+    m = re.search(r"<application\b[^>]*>", xml)
+    if m:
+        res["is_debuggable"] = _flag_true(_attr(m.group(0), "debuggable"))
+        ab = _attr(m.group(0), "allowBackup")
+        res["is_allow_backup"] = 1 if ab is None else _flag_true(ab)
+
+    # Duyet the theo thu tu de biet component nao co intent-filter chua action/category
+    stack = []          # [ten_the, ...]
+    comp = None         # [loai_component, da_exported]
+    in_filter = False
+    for close, tag in re.findall(r"<(/?)([A-Za-z][\w.-]*)", xml):
+        if not close:
+            if tag in _COMPONENT_TAGS and comp is None:
+                res[f"num_{tag}s" if tag != "activity" else "num_activities"] += 1
+                comp = [tag, False]
+            elif tag == "intent-filter" and comp is not None:
+                in_filter = True
+            elif tag in ("action", "category") and in_filter and comp is not None:
+                comp[1] = True
+            stack.append(tag)
+        else:
+            if stack:
+                stack.pop()
+            if tag == "intent-filter":
+                in_filter = False
+            elif comp is not None and tag == comp[0]:
+                if comp[1] and comp[0] != "provider":
+                    key = "num_exported_activities" if comp[0] == "activity" else f"num_exported_{comp[0]}s"
+                    res[key] += 1
+                comp = None
+    return res
+
+
+def _manifest_apkinspector(apk_path: str):
     try:
-        features["min_sdk"] = int(a.get_min_sdk_version() or 0)
+        return _manifest_from_xml(parse_apk_for_manifest(apk_path))
     except Exception:
-        features["min_sdk"] = 0
-    try:
-        features["target_sdk"] = int(a.get_target_sdk_version() or 0)
-    except Exception:
-        features["target_sdk"] = 0
+        return None
 
+
+def _tamper_flags(apk_bytes: bytes) -> dict:
+    try:
+        t = apk_tampering_check(io.BytesIO(apk_bytes), strict=False)
+        return {"manifest_tampered": int(bool(t.get("manifest tampering"))),
+                "zip_tampered": int(bool(t.get("zip tampering")))}
+    except Exception:
+        # Khong phan tich duoc cau truc -> bat thuong, coi nhu bi tamper
+        return {"manifest_tampered": 1, "zip_tampered": 1}
+
+
+# ===================== HAM CHINH =====================
+
+def extract_features(apk_path: str) -> dict:
+    """
+    Tra ve dict CHINH XAC cac khoa trong FEATURE_SCHEMA (khong thua, khong thieu),
+    cong them metadata (khong dua vao model): sha256, package_name, manifest_source.
+    """
+    a, d, dx = AnalyzeAPK(apk_path)
+    with open(apk_path, "rb") as f:
+        apk_bytes = f.read()
+
+    man = _manifest_androguard(a)
+    source = "androguard"
+    # androguard bi danh lua (manifest lam meo) -> dung apkInspector
+    if not man["package"] or not man["perms"]:
+        alt = _manifest_apkinspector(apk_path)
+        if alt and (alt["package"] or alt["perms"]) and len(alt["perms"]) >= len(man["perms"]):
+            man, source = alt, "apkInspector"
+
+    perms = man["perms"]
+    features = {}
+    for p in PERMISSIONS:
+        features[f"perm__{p.split('.')[-1]}"] = int(p in perms)
+
+    features["is_debuggable"] = man["is_debuggable"]
+    features["is_allow_backup"] = man["is_allow_backup"]
+    try:
+        features["has_native_lib"] = int(any(f.endswith(".so") for f in a.get_files()))
+    except Exception:
+        features["has_native_lib"] = 0
+
+    features.update(_tamper_flags(apk_bytes))
+
+    for k in COMPONENT_COUNTS:
+        features[k] = man[k]
+    features["min_sdk"] = man["min_sdk"]
+    features["target_sdk"] = man["target_sdk"]
     features["file_size_kb"] = round(os.path.getsize(apk_path) / 1024, 2)
     features["num_permissions"] = len(perms)
 
     try:
-        dex_bytes = b"".join(
-            a.get_file(f) for f in a.get_files() if f.endswith(".dex")
-        )
+        dex_bytes = b"".join(a.get_file(f) for f in a.get_files() if f.endswith(".dex"))
         features["dex_entropy"] = _shannon_entropy(dex_bytes)
     except Exception:
         features["dex_entropy"] = 0.0
@@ -191,10 +303,8 @@ def extract_features(apk_path: str) -> dict:
     except Exception:
         features.update({f"opcode__{o}": 0.0 for o in OPCODES})
 
-    with open(apk_path, "rb") as f:
-        sha256 = hashlib.sha256(f.read()).hexdigest()
-
     ordered = {k: features.get(k, 0) for k in FEATURE_SCHEMA}
-    ordered["sha256"] = sha256
-    ordered["package_name"] = a.get_package()
+    ordered["sha256"] = hashlib.sha256(apk_bytes).hexdigest()
+    ordered["package_name"] = man["package"]
+    ordered["manifest_source"] = source
     return ordered
