@@ -41,8 +41,6 @@
   "num_exported_activities",
   "num_exported_services",
   "num_exported_receivers",
-  "min_sdk",
-  "target_sdk",
   "file_size_kb",
   "dex_entropy",
   "num_permissions",

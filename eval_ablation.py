@@ -1,4 +1,4 @@
-import numpy as np, pandas as pd
+﻿import numpy as np, pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.preprocessing import LabelEncoder
@@ -41,3 +41,4 @@ m = make().fit(df[FEATURE_SCHEMA].fillna(0).astype(float).values, y,
                sample_weight=compute_sample_weight("balanced", y))
 top = sorted(zip(FEATURE_SCHEMA, m.feature_importances_), key=lambda t: -t[1])[:10]
 print("Top 10 dac trung:", [(n, round(float(v), 3)) for n, v in top])
+run([c for c in FEATURE_SCHEMA if c not in ("min_sdk", "target_sdk")], "Bo min_sdk+target_sdk")

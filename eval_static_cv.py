@@ -27,3 +27,4 @@ def run(cols, name):
 run(FEATURE_SCHEMA, "Day du 73 dac trung")
 NO_TAMPER = [c for c in FEATURE_SCHEMA if c not in ("manifest_tampered", "zip_tampered")]
 run(NO_TAMPER, "Bo 2 co tamper")
+run([c for c in FEATURE_SCHEMA if c not in ('min_sdk','target_sdk')], 'Bo min_sdk+target_sdk')

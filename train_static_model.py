@@ -24,6 +24,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.utils.class_weight import compute_sample_weight
 
 try:
     from xgboost import XGBClassifier
@@ -31,14 +32,14 @@ try:
 except Exception:
     HAS_XGB = False
 
-try:
-    from imblearn.over_sampling import SMOTE
-    HAS_SMOTE = True
-except Exception:
-    HAS_SMOTE = False
-
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from scanner.static_features import FEATURE_SCHEMA
+
+# 5 lop cua bai toan. Nhan khac (vi du "Malware" = dropper chung) bi loai.
+CLASSES = ["Benign", "Adware", "Banking", "SMS", "Riskware"]
+# Cot van duoc extract_features() trich nhung KHONG dua vao model.
+EXCLUDE_FEATURES = ["min_sdk", "target_sdk"]
+MODEL_FEATURES = [c for c in FEATURE_SCHEMA if c not in EXCLUDE_FEATURES]
 
 CSV_PATH = "dataset/processed/static_features.csv"
 MODEL_DIR = "models"
@@ -61,9 +62,17 @@ def load_data():
         print("Co the CSV nay sinh tu phien ban static_features.py cu hon. Chay lai build_static_dataset.py.")
         sys.exit(1)
 
+    print("\nPhan bo nhan trong CSV:")
+    print(df["label"].value_counts().to_string())
+
+    dropped = df[~df["label"].isin(CLASSES)]
+    if len(dropped):
+        print(f"\nLoai {len(dropped)} mau khong thuoc 5 lop {CLASSES}:")
+        print(dropped["label"].value_counts().to_string())
+    df = df[df["label"].isin(CLASSES)].reset_index(drop=True)
+    print(f"Con lai {len(df)} mau cho bai toan 5 lop.")
+
     counts = df["label"].value_counts()
-    print("\nPhan bo nhan trong du lieu:")
-    print(counts.to_string())
 
     if counts.shape[0] < 2:
         print("\nLOI: chi co 1 nhan duy nhat trong du lieu ("
@@ -78,7 +87,7 @@ def load_data():
 def main():
     df = load_data()
 
-    X = df[FEATURE_SCHEMA].fillna(0).astype(float)
+    X = df[MODEL_FEATURES].fillna(0).astype(float)
     y_raw = df["label"].astype(str)
 
     le = LabelEncoder()
@@ -95,24 +104,9 @@ def main():
         X, y, test_size=0.2, random_state=42, stratify=stratify_arg
     )
 
-    # SMOTE chi ap dung duoc neu lop nho nhat trong tap train co >= 2 mau
-    # va >= k_neighbors+1 mau (mac dinh k_neighbors=5, ta ha xuong neu can).
-    if HAS_SMOTE:
-        train_counts = pd.Series(y_train).value_counts()
-        min_train_count = train_counts.min()
-        if min_train_count >= 2:
-            k = max(1, min(5, min_train_count - 1))
-            try:
-                sm = SMOTE(random_state=42, k_neighbors=k)
-                X_train, y_train = sm.fit_resample(X_train, y_train)
-                print(f"\nDa ap dung SMOTE (k_neighbors={k}). "
-                      f"So mau train sau SMOTE: {len(y_train)}")
-            except Exception as e:
-                print(f"\nSMOTE loi ({e}), bo qua, dung du lieu goc.")
-        else:
-            print("\nBo qua SMOTE: co lop trong tap train chi co 1 mau (can >= 2).")
-    else:
-        print("\nimbalanced-learn chua duoc cai, bo qua SMOTE.")
+    # Khong dung SMOTE (mau tong hop de lot vao danh gia); can bang bang trong so
+    # nhu eval_5class_cv.py, chi tinh tren tap train.
+    w_train = compute_sample_weight("balanced", y_train)
 
     if HAS_XGB:
         print("\nHuan luyen XGBoost...")
@@ -127,7 +121,7 @@ def main():
             n_estimators=400, max_depth=None, random_state=42, n_jobs=-1
         )
 
-    clf.fit(X_train, y_train)
+    clf.fit(X_train, y_train, sample_weight=w_train)
 
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
@@ -143,19 +137,31 @@ def main():
     print("\nBao cao phan loai:")
     print(classification_report(y_test, y_pred, labels=all_labels,
                                 target_names=le.classes_, zero_division=0))
-    print("Ma tran nham lan (hang = that, cot = du doan), thu tu lop:", list(le.classes_))
-    print(confusion_matrix(y_test, y_pred, labels=all_labels))
 
     os.makedirs(MODEL_DIR, exist_ok=True)
     joblib.dump(clf, MODEL_PATH)
     joblib.dump(le, ENCODER_PATH)
+    # Luu dung danh sach + thu tu cot model dung, de luc suy luan lay lai y het
     with open(SCHEMA_PATH, "w", encoding="utf-8") as f:
-        json.dump(FEATURE_SCHEMA, f, ensure_ascii=False, indent=2)
+        json.dump(MODEL_FEATURES, f, ensure_ascii=False, indent=2)
 
     print(f"\nDa luu model: {MODEL_PATH}")
     print(f"Da luu label encoder: {ENCODER_PATH}")
     print(f"Da luu feature schema: {SCHEMA_PATH}")
-    print("\nLUU Y: day la model moi (Tang 1 tinh, dung schema 73 dac trung co dinh).")
+
+    print("\n" + "=" * 60)
+    print("TOM TAT")
+    print("=" * 60)
+    print("So mau moi lop (sau khi loai nhan ngoai 5 lop):")
+    print(f"{'Lop':10s} {'Tong':>5s} {'Train':>6s} {'Test':>5s}")
+    for i, c in enumerate(le.classes_):
+        print(f"{c:10s} {int((y == i).sum()):5d} {int((y_train == i).sum()):6d} {int((y_test == i).sum()):5d}")
+    print(f"\nCot dau vao model: {len(MODEL_FEATURES)} "
+          f"(= {len(FEATURE_SCHEMA)} FEATURE_SCHEMA - {len(EXCLUDE_FEATURES)} loai tru {EXCLUDE_FEATURES})")
+    print(", ".join(MODEL_FEATURES))
+    print("\nMa tran nham lan tren tap test (hang = that, cot = du doan), thu tu lop:", list(le.classes_))
+    print(confusion_matrix(y_test, y_pred, labels=all_labels))
+    print(f"\nLUU Y: Tang 1 tinh, {len(MODEL_FEATURES)} dac trung doc tu {SCHEMA_PATH}.")
     print("Model nay KHONG tuong thich voi models/*.pkl cu (dynamic/syscalls) - can sua")
     print("scanner/detect_and_classify.py de dung model + schema moi nay khi suy luan (inference).")
 
