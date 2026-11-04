@@ -321,7 +321,25 @@ document.addEventListener('DOMContentLoaded', function() {
         if (data.confidence != null) data.confidence = Math.round(parseFloat(data.confidence) * 100) / 100;
         window._lastScanData = data; // Lưu để exportToPDF dùng
         const isDanger = data.risk_level === 'Rất cao' || data.risk_level === 'Cao';
-        const colorClass = isDanger ? 'var(--neon-red)' : 'var(--neon-cyan)';
+        const incomplete = !!data.analysis_incomplete;
+        const hasProbs = !!data.all_probabilities && Object.keys(data.all_probabilities).length > 0;
+        const colorClass = incomplete ? '#facc15' : (isDanger ? 'var(--neon-red)' : 'var(--neon-cyan)');
+        // Không có nhãn/xác suất (APK không phân tích được) -> hiện "—" thay vì "null%"
+        const confText = (data.confidence != null && !isNaN(data.confidence)) ? `${data.confidence}%` : '—';
+        const flagBadge = v => (v == null)
+            ? '<span class="text-light" style="opacity:0.6;">N/A</span>'
+            : (Number(v) ? '<span class="badge bg-danger">CÓ (1)</span>' : '<span class="badge bg-success">KHÔNG (0)</span>');
+
+        let notesHtml = '';
+        if (data.notes && data.notes.length > 0) {
+            notesHtml = `<div class="p-3 rounded-3 mt-3" style="background: rgba(250,204,21,0.08); border-left: 4px solid #facc15;">
+                <strong style="color:#facc15;"><i class="fas fa-triangle-exclamation me-1"></i> Ghi chú:</strong>
+                <ul class="mb-0 mt-1 text-white small">${data.notes.map(n => `<li>${escapeHtml(String(n))}</li>`).join('')}</ul>
+                ${incomplete && data.incomplete_reasons && data.incomplete_reasons.length
+                    ? `<div class="text-light small mt-2" style="opacity:0.7;">Chi tiết: ${data.incomplete_reasons.map(r => escapeHtml(String(r))).join(' | ')}</div>`
+                    : ''}
+            </div>`;
+        }
 
         let dangerousHtml = '';
         if (data.dangerous_permissions && data.dangerous_permissions.length > 0) {
@@ -345,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="d-flex justify-content-around mt-3 border-top border-secondary pt-3">
                             <div>
                                 <small class="text-light d-block text-uppercase" style="opacity:0.7;">Độ tin cậy AI</small>
-                                <strong class="fs-4 text-white">${data.confidence}%</strong>
+                                <strong class="fs-4 text-white">${confText}</strong>
                             </div>
                             <div>
                                 <small class="text-light d-block text-uppercase" style="opacity:0.7;">Mức rủi ro</small>
@@ -359,12 +377,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mb-3"><i class="fas fa-file text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">File Target:</strong> <span class="text-white">${escapeHtml(data.filename || 'File')}</span></p>
                         <p class="mb-3"><i class="fas fa-box text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Package ID:</strong> <code class="text-info fs-6">${escapeHtml(data.package_name || 'N/A')}</code></p>
                         <p class="mb-3"><i class="fas fa-tag text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Tên App:</strong> <span class="text-white">${escapeHtml(data.app_name || 'Không xác định')}</span></p>
-                        <p class="mb-0"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${escapeHtml(data.version || 'N/A')}</span></p>
+                        <p class="mb-3"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${escapeHtml(data.version || 'N/A')}</span></p>
+                        <p class="mb-3"><i class="fas fa-file-code text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Nguồn đọc Manifest:</strong> <code class="text-info">${escapeHtml(data.manifest_source || 'N/A')}</code></p>
+                        <p class="mb-3"><i class="fas fa-user-secret text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Manifest bị làm méo:</strong> ${flagBadge(data.manifest_tampered)}</p>
+                        <p class="mb-0"><i class="fas fa-file-zipper text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Cấu trúc ZIP bị làm méo:</strong> ${flagBadge(data.zip_tampered)}</p>
                     </div>
                 </div>
             </div>
 
             <div class="px-3">
+                ${notesHtml}
                 ${dangerousHtml}
                 <div class="p-3 rounded-3 mt-3" style="background: rgba(0,243,255,0.05); border-left: 4px solid var(--neon-cyan);">
                     <strong class="text-info"><i class="fas fa-lightbulb"></i> Khuyến nghị hệ thống:</strong><br>
@@ -514,7 +536,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             Đặc Trưng Nhận Diện
                         </h6>
                         <span class="badge" style="background:rgba(167,139,250,0.15);color:#c4b5fd;border:1px solid rgba(167,139,250,0.4);font-size:0.7rem;">
-                            contribution = value × importance
+                            contribution = SHAP (XGBoost TreeSHAP)
                         </span>
                     </div>
 
@@ -601,7 +623,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         document.getElementById('resultContainer').innerHTML = html;
 
-        if (data.all_probabilities) {
+        if (!hasProbs) {
+            if (window.malwareChart) { window.malwareChart.destroy(); window.malwareChart = null; }
+            const cv = document.getElementById('probabilityChart');
+            if (cv && cv.parentElement) {
+                cv.parentElement.innerHTML = '<div class="text-light d-flex align-items-center justify-content-center h-100" style="opacity:0.7;">Không có phân phối xác suất — mô hình không dự đoán vì phân tích chưa đầy đủ.</div>';
+            }
+        } else {
             const ctx = document.getElementById('probabilityChart').getContext('2d');
             if (window.malwareChart) { window.malwareChart.destroy(); }
             Chart.defaults.color = '#e2e8f0'; 
@@ -934,7 +962,7 @@ window.exportToPDF = function() {
         </div>
         <div style="flex:1;text-align:center;border-left:1px solid #e2e8f0;padding-left:12px;">
           <div style="color:#64748b;font-size:10px;text-transform:uppercase;">Độ tin cậy AI</div>
-          <div style="font-size:32px;font-weight:bold;color:#0f172a;">${esc(String(d.confidence||'?'))}%</div>
+          <div style="font-size:32px;font-weight:bold;color:#0f172a;">${d.confidence != null ? esc(String(d.confidence)) + '%' : '—'}</div>
         </div>
         <div style="flex:1;text-align:center;border-left:1px solid #e2e8f0;padding-left:12px;">
           <div style="color:#64748b;font-size:10px;text-transform:uppercase;">Mức rủi ro</div>
@@ -943,6 +971,13 @@ window.exportToPDF = function() {
       </div>
       <div style="background:#f0f9ff;border-left:4px solid #0284c7;padding:10px 12px;border-radius:4px;margin-top:12px;font-size:12px;color:#0f172a;">
         <strong>💡 Khuyến nghị:</strong> ${esc(recs[d.class] || recs[d.class_name] || 'Yêu cầu phân tích chuyên sâu.')}
+      </div>
+      ${d.notes && d.notes.length ? `<div style="background:#fefce8;border-left:4px solid #ca8a04;padding:8px 12px;border-radius:4px;margin-top:8px;font-size:11px;color:#713f12;">
+        <strong>⚠️ Ghi chú:</strong> ${d.notes.map(n => esc(n)).join('<br>')}</div>` : ''}
+      <div style="margin-top:8px;font-size:11px;color:#475569;">
+        Nguồn Manifest: <strong>${esc(d.manifest_source || 'N/A')}</strong> ·
+        manifest_tampered: <strong>${d.manifest_tampered != null ? esc(String(d.manifest_tampered)) : 'N/A'}</strong> ·
+        zip_tampered: <strong>${d.zip_tampered != null ? esc(String(d.zip_tampered)) : 'N/A'}</strong>
       </div>
     </div>`;
 

@@ -240,9 +240,12 @@ def attach_deep_analysis(result, filepath):
     """Shared report for upload and file-manager scans; keep ML output compatible."""
     deep = analyze_deep(filepath)
     result['deep'] = deep
+    # APK không phân tích được (analysis_incomplete): Tầng 1 không dự đoán, class/confidence = None
+    # -> kết luận chỉ dựa vào luật, tránh combine_verdict tính toán với None.
+    ml_reliable = not (result.get('unreliable', False) or result.get('analysis_incomplete', False))
     result['verdict'] = combine_verdict(
-        result.get('class', '1'), result.get('confidence', 0),
-        deep['rule_score'], ml_reliable=not result.get('unreliable', False))
+        result.get('class') or '1', result.get('confidence') or 0,
+        deep['rule_score'], ml_reliable=ml_reliable)
     result['version'] = deep['info']['version_name']
     return deep, result['verdict']
  
@@ -294,7 +297,8 @@ def scan_apk():
  
     try:
         # 1. Đọc bytes trực tiếp từ upload stream trước khi đụng đến disk
-        # (tránh [Errno 22] Invalid argument khi Python 3.14/Windows đọc file vừa ghi)
+        # (trước đây gặp [Errno 22] Invalid argument trên Windows khi đọc lại file vừa ghi;
+        #  venv hiện chạy Python 3.13 — không phải 3.14 như ghi chú cũ)
         file_bytes = file.read()
         _log(f"Đã đọc {len(file_bytes):,} bytes từ upload stream.")
  
@@ -305,25 +309,36 @@ def scan_apk():
             _dst.write(file_bytes)
         _log(f"Đã lưu: {filename}")
  
-        # 3. AI phân tích tĩnh — truyền bytes trực tiếp, không đọc lại từ disk
+        # 3. AI phân tích tĩnh — truyền bytes; detector tự ghi ra file tạm riêng
+        #    (extract_features cần đường dẫn) rồi xóa, không đọc lại file `filepath` ở trên
         _log("Đang khởi động Androguard — giải nén APK, đọc DEX bytecode...")
         ai_result = detector.analyze_apk(file_bytes, filename)
  
         if not ai_result.get('success'):
             raise Exception(ai_result.get('error', 'Lỗi phân tích APK'))
  
-        _log(f"Trích xuất xong {ai_result.get('total_permissions', 0)} quyền từ AndroidManifest.xml.")
-        _log(f"Số đặc trưng khớp với model: {ai_result.get('feature_count', 0)}/{len(detector.scaler.mean_) if ai_result.get('unreliable') else ai_result.get('feature_count', 0)}.")
-        if ai_result.get('warning'):
-            _log(ai_result['warning'], level='WARN')
+        _log(f"Trích xuất xong {ai_result.get('total_permissions', 0)} quyền từ AndroidManifest.xml "
+             f"(nguồn manifest: {ai_result.get('manifest_source')}).")
+        incomplete = bool(ai_result.get('analysis_incomplete'))
+        if not incomplete:
+            _log(f"Số đặc trưng khác 0: {ai_result.get('feature_count', 0)}/{len(detector.feature_names)}.")
         _log(f"SHA256: {ai_result.get('sha256', 'N/A')}")
- 
-        vec = ai_result.get('binary_vector_sample', [])
-        _log(f"Vector nhị phân (20 cột đầu): [{', '.join(str(v) for v in vec)}]")
- 
-        _log(f"Đang bơm vector vào model XGBoost (.predict_proba)...")
-        _log(f"KẾT QUẢ: {ai_result.get('name')} — Độ tin cậy: {ai_result.get('confidence')}%", level='SUCCESS')
- 
+        if ai_result.get('manifest_tampered') or ai_result.get('zip_tampered'):
+            _log(f"[TAMPER] manifest_tampered={ai_result.get('manifest_tampered')}, "
+                 f"zip_tampered={ai_result.get('zip_tampered')}", level='WARN')
+        for reason in ai_result.get('incomplete_reasons') or []:
+            _log(f"[PHÂN TÍCH CHƯA ĐẦY ĐỦ] {reason}", level='WARN')
+
+        if not incomplete:
+            vec = ai_result.get('binary_vector_sample', [])
+            _log(f"Vector đặc trưng (20 cột đầu): [{', '.join(str(v) for v in vec)}]")
+            _log(f"Đang bơm vector vào model XGBoost (.predict_proba)...")
+            _log(f"KẾT QUẢ: {ai_result.get('name')} — Độ tin cậy: {ai_result.get('confidence')}%", level='SUCCESS')
+        else:
+            _log(f"KẾT QUẢ: {ai_result.get('label')} — không gọi model (phân tích chưa đầy đủ).", level='WARN')
+        for note in ai_result.get('notes') or []:
+            _log(note, level='WARN')
+
         risk_combos = ai_result.get('risk_combos', [])
         if risk_combos:
             for combo in risk_combos:
@@ -331,7 +346,7 @@ def scan_apk():
         else:
             _log("Không phát hiện tổ hợp quyền nguy hiểm.", level='INFO')
  
-        if 'confidence' in ai_result:
+        if ai_result.get('confidence') is not None:
             ai_result['confidence'] = round(float(ai_result['confidence']), 2)
  
         # 4. Phân tích chuyên sâu cục bộ (chữ ký, manifest, bytecode, chuỗi, che giấu) + kết hợp với AI
@@ -496,7 +511,7 @@ def scan_file_in_manager(subfolder, filename):
                 except: pass
         else:
             return jsonify({'success': False, 'error': 'Unsupported file type'}), 400
-        if 'confidence' in result: result['confidence'] = float(result['confidence'])
+        if result.get('confidence') is not None: result['confidence'] = float(result['confidence'])
         return jsonify(result)
     except Exception as e:
         import traceback

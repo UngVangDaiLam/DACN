@@ -1,404 +1,354 @@
 # scanner/detect_and_classify.py
-import pandas as pd
-import numpy as np
-import joblib
+"""
+Suy luan Tang 1 (phan tich TINH) cho APK.
+
+Pipeline: extract_features(apk_path)  ->  chon cot theo models/static_feature_schema.json
+(dung thu tu)  ->  static_model.predict_proba  ->  static_label_encoder.inverse_transform.
+
+Quy tac: file nay KHONG tu suy ra / dem / them cot dac trung nao. Moi dac trung cua
+model deu lay tu scanner/static_features.extract_features(). Neu schema doi hoi cot
+ma extract_features() khong tra ve -> bao loi cau hinh, khong dien 0.
+"""
 import os
+import sys
+import json
 import hashlib
 import tempfile
+import warnings
 
-# Thư mục gốc dự án — để nạp model đúng bất kể chạy từ thư mục nào
+import joblib
+import numpy as np
+import pandas as pd
+
+try:
+    from scanner import static_features as _sf
+except ImportError:  # chay truc tiep: python scanner/detect_and_classify.py
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from scanner import static_features as _sf
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_MODELS = os.path.join(_ROOT, 'models')
+_MODEL_DIR = os.path.join(_ROOT, "models")
 
-# Model tĩnh (Tầng 1) sinh bởi train_static_model.py
-STATIC_MODEL_PATH = os.path.join(_MODELS, 'static_model.pkl')
-STATIC_ENCODER_PATH = os.path.join(_MODELS, 'static_label_encoder.pkl')
+ADWARE_NOTE = ("Lưu ý: lớp Adware chịu ảnh hưởng của đời mẫu - mô hình được huấn luyện "
+               "trên mẫu Adware 2017-2018, nên với APK đời mới nhãn này kém tin cậy hơn.")
+INCOMPLETE_NOTE = "DEX không phân tích được; cần phân tích động"
+UNKNOWN_LABEL = "Không xác định"
+
+# Quyen thuc su nhay cam trong 30 quyen theo doi (static_features.PERMISSIONS):
+# - 16 quyen protectionLevel "dangerous" (runtime permission) cua Android
+# - 5 quyen dac biet / chi he thong cap, hay bi ma doc lam dung
+# Bo qua quyen "normal" cap tu dong luc cai: INTERNET, ACCESS_NETWORK_STATE,
+# CHANGE_WIFI_STATE, WAKE_LOCK, RECEIVE_BOOT_COMPLETED, DISABLE_KEYGUARD,
+# GET_TASKS, KILL_BACKGROUND_PROCESSES, BLUETOOTH.
+SENSITIVE_PERMISSIONS = {
+    # dangerous (runtime)
+    "READ_SMS", "SEND_SMS", "RECEIVE_SMS", "RECEIVE_MMS",
+    "READ_PHONE_STATE", "CALL_PHONE", "READ_CALL_LOG",
+    "READ_CONTACTS", "WRITE_CONTACTS", "READ_CALENDAR",
+    "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION",
+    "CAMERA", "RECORD_AUDIO",
+    "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE",
+    # dac biet / he thong
+    "SYSTEM_ALERT_WINDOW", "BIND_ACCESSIBILITY_SERVICE", "BIND_DEVICE_ADMIN",
+    "REQUEST_INSTALL_PACKAGES", "PACKAGE_USAGE_STATS",
+}
+
+# Ma lop '1'..'5' giu nguyen de tuong thich frontend (scan.html: getRecommendation, recs)
+MALWARE_INFO = {
+    "Benign":   {"class": "1", "name": "Benign (An toàn)",   "icon": "🟢", "color": "success", "risk_level": "Thấp"},
+    "Adware":   {"class": "2", "name": "Adware (Quảng cáo)", "icon": "📢", "color": "warning", "risk_level": "Trung bình"},
+    "Banking":  {"class": "3", "name": "Banking Malware",    "icon": "🏦", "color": "danger",  "risk_level": "Rất cao"},
+    "SMS":      {"class": "4", "name": "SMS Malware",        "icon": "💬", "color": "danger",  "risk_level": "Rất cao"},
+    "Riskware": {"class": "5", "name": "Riskware",           "icon": "⚠️", "color": "warning", "risk_level": "Cao"},
+}
+INCOMPLETE_INFO = {"class": None, "name": UNKNOWN_LABEL, "icon": "❓",
+                   "color": "secondary", "risk_level": UNKNOWN_LABEL}
 
 RISK_RULES = [
-    ({'android.permission.READ_SMS', 'android.permission.INTERNET'},
-     'Có thể đánh cắp mã OTP và gửi về máy chủ từ xa'),
-    ({'android.permission.RECORD_AUDIO', 'android.permission.INTERNET'},
-     'Có thể nghe lén và truyền âm thanh lên mạng'),
-    ({'android.permission.ACCESS_FINE_LOCATION', 'android.permission.INTERNET'},
-     'Có thể theo dõi vị trí GPS và gửi về máy chủ'),
-    ({'android.permission.READ_CONTACTS', 'android.permission.SEND_SMS'},
-     'Có thể phát tán spam SMS tới toàn bộ danh bạ'),
-    ({'android.permission.CAMERA', 'android.permission.INTERNET'},
-     'Có thể chụp ảnh bí mật và upload lên mạng'),
-    ({'android.permission.READ_CALL_LOG', 'android.permission.INTERNET'},
-     'Có thể rò rỉ lịch sử cuộc gọi ra ngoài'),
-    ({'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.READ_SMS'},
-     'Có thể sao chép tin nhắn vào thẻ nhớ'),
+    ({"READ_SMS", "INTERNET"}, "Có thể đánh cắp mã OTP và gửi về máy chủ từ xa"),
+    ({"RECORD_AUDIO", "INTERNET"}, "Có thể nghe lén và truyền âm thanh lên mạng"),
+    ({"ACCESS_FINE_LOCATION", "INTERNET"}, "Có thể theo dõi vị trí GPS và gửi về máy chủ"),
+    ({"READ_CONTACTS", "SEND_SMS"}, "Có thể phát tán spam SMS tới toàn bộ danh bạ"),
+    ({"CAMERA", "INTERNET"}, "Có thể chụp ảnh bí mật và upload lên mạng"),
+    ({"READ_CALL_LOG", "INTERNET"}, "Có thể rò rỉ lịch sử cuộc gọi ra ngoài"),
+    ({"WRITE_EXTERNAL_STORAGE", "READ_SMS"}, "Có thể sao chép tin nhắn vào thẻ nhớ"),
 ]
 
+
 class MalwareDetector:
-    def __init__(self, model_path=os.path.join(_MODELS, 'malware_model.pkl'),
-                 scaler_path=os.path.join(_MODELS, 'scaler.pkl'),
-                 encoder_path=os.path.join(_MODELS, 'label_encoder.pkl')):
-        print(f"🔍 DEBUG: Đang nạp Model từ: {os.path.abspath(model_path)}")
+    def __init__(self,
+                 model_path=os.path.join(_MODEL_DIR, "static_model.pkl"),
+                 encoder_path=os.path.join(_MODEL_DIR, "static_label_encoder.pkl"),
+                 schema_path=os.path.join(_MODEL_DIR, "static_feature_schema.json")):
+        print(f"🔍 Nạp model Tầng 1 (tĩnh) từ: {os.path.abspath(model_path)}")
         self.model = joblib.load(model_path)
-        self.scaler = joblib.load(scaler_path)
         self.label_encoder = joblib.load(encoder_path)
-        self.class_names = [str(name) for name in self.label_encoder.classes_]
-        
-        self.malware_info = {
-            '1': {'name': 'Benign (An toàn)', 'icon': '🟢', 'color': 'success', 'risk_level': 'Thấp'},
-            '2': {'name': 'Adware (Quảng cáo)', 'icon': '📢', 'color': 'warning', 'risk_level': 'Trung bình'},
-            '3': {'name': 'Banking Malware', 'icon': '🏦', 'color': 'danger', 'risk_level': 'Rất cao'},
-            '4': {'name': 'SMS Malware', 'icon': '💬', 'color': 'danger', 'risk_level': 'Rất cao'},
-            '5': {'name': 'Riskware', 'icon': '⚠️', 'color': 'warning', 'risk_level': 'Cao'}
-        }
-    
-    def analyze_csv(self, filepath, filename):
-        """Phân tích file CSV"""
-        df = pd.read_csv(filepath, low_memory=False)
-        
-        for col in df.columns:
-            if col.lower() in ['class', 'category', 'label']:
-                df = df.drop(columns=[col])
-                break
-        
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-        df = df.fillna(0).replace([np.inf, -np.inf], 0)
-        
-        n_features = self.scaler.mean_.shape[0]
-        if df.shape[1] > n_features:
-            df = df.iloc[:, :n_features]
-        elif df.shape[1] < n_features:
-            for i in range(n_features - df.shape[1]):
-                df[f'dummy_{i}'] = 0
-        
-        X_scaled = self.scaler.transform(df)
-        predictions = self.model.predict(X_scaled)
-        probabilities = self.model.predict_proba(X_scaled)
-        
-        unique, counts = np.unique(predictions, return_counts=True)
-        stats = {}
-        for code, count in zip(unique, counts):
-            class_key = str(code + 1)
-            stats[class_key] = {
-                'count': int(count),
-                'percentage': round(count / len(predictions) * 100, 2)
-            }
-        
-        first_pred = predictions[0]
-        first_class = str(first_pred + 1)
-        first_conf = probabilities[0][first_pred] * 100
-        first_info = self.malware_info.get(first_class, self.malware_info['1'])
-        
-        return {
-            'success': True,
-            'type': 'csv',
-            'filename': filename,
-            'total_samples': len(df),
-            'statistics': stats,
-            'first_sample': {
-                'class': first_class,
-                'name': first_info['name'],
-                'confidence': round(first_conf, 2),
-                'icon': first_info['icon'],
-                'risk_level': first_info['risk_level']
-            }
-        }
-    
-    def _load_static_model(self):
-        """Nạp model tĩnh (cache). Trả về (model, encoder) hoặc None nếu chưa train."""
-        if not hasattr(self, '_static'):
-            self._static = None
-            if os.path.exists(STATIC_MODEL_PATH) and os.path.exists(STATIC_ENCODER_PATH):
-                self._static = (joblib.load(STATIC_MODEL_PATH), joblib.load(STATIC_ENCODER_PATH))
-                print(f"✅ Đã nạp model tĩnh: {STATIC_MODEL_PATH}")
-            else:
-                print("⚠️ Chưa có models/static_model.pkl — APK sẽ dùng pipeline cũ (KHÔNG đáng tin). "
-                      "Chạy build_static_dataset.py + train_static_model.py.")
-        return self._static
+        with open(schema_path, encoding="utf-8") as f:
+            self.feature_names = list(json.load(f))
+        self.class_names = [str(c) for c in self.label_encoder.classes_]
 
-    @staticmethod
-    def _static_class_info(label):
-        """Ánh xạ nhãn của model tĩnh sang class key '1'-'5' mà frontend đang dùng."""
-        low = label.lower()
-        if low == 'benign':
-            key = '1'
-        elif 'adware' in low:
-            key = '2'
-        elif 'bank' in low:
-            key = '3'
-        elif 'sms' in low:
-            key = '4'
-        else:
-            key = '5'
-        return key
+        # Kiem tra cau hinh ngay khi nap, khong de loi lech cot xay ra am tham luc suy luan
+        unknown = [c for c in self.feature_names if c not in _sf.FEATURE_SCHEMA]
+        if unknown:
+            raise ValueError(f"Schema có cột extract_features() không sinh ra: {unknown}")
+        model_cols = getattr(self.model, "feature_names_in_", None)
+        if model_cols is not None and list(model_cols) != self.feature_names:
+            raise ValueError("static_feature_schema.json không khớp thứ tự cột của static_model.pkl")
+        unknown_lbl = [c for c in self.class_names if c not in MALWARE_INFO]
+        if unknown_lbl:
+            raise ValueError(f"Nhãn không có trong MALWARE_INFO: {unknown_lbl}")
 
+    # ------------------------------------------------------------------ core
+    def _predict(self, X: pd.DataFrame):
+        """X: DataFrame dung cot/thu tu schema. Tra (nhan[], ma tran xac suat)."""
+        proba = self.model.predict_proba(X)
+        labels = self.label_encoder.inverse_transform(np.argmax(proba, axis=1))
+        return labels, proba
+
+    def _vector(self, feats: dict) -> pd.DataFrame:
+        missing = [c for c in self.feature_names if c not in feats]
+        if missing:
+            raise KeyError(f"extract_features() thiếu cột: {missing}")
+        return pd.DataFrame([[feats[c] for c in self.feature_names]],
+                            columns=self.feature_names, dtype=float)
+
+    def _contributions(self, X: pd.DataFrame, class_idx: int):
+        """Dong gop SHAP (TreeSHAP cua XGBoost) cho lop du doan, tren chinh mau nay."""
+        try:
+            import xgboost as xgb
+            contribs = self.model.get_booster().predict(xgb.DMatrix(X), pred_contribs=True)
+            contribs = np.asarray(contribs)
+            row = contribs[0, class_idx, :-1] if contribs.ndim == 3 else contribs[0, :-1]
+        except Exception as e:
+            warnings.warn(f"Không tính được SHAP: {e!r}")
+            return []
+        pos_total = row[row > 0].sum()
+        order = np.argsort(row)[::-1][:15]
+        return [
+            {
+                "name": self.feature_names[i],
+                "present": float(X.iloc[0, i]),
+                "shap": round(float(row[i]), 4),
+                # % trong tong luc day (duong) ve phia lop du doan
+                "contribution": round(float(row[i] / pos_total * 100), 3) if pos_total > 0 else 0.0,
+            }
+            for i in order if row[i] > 0
+        ]
+
+    # ------------------------------------------------------------------- APK
     def analyze_apk(self, apk_input, filename):
-        """Phân tích APK. Dùng model tĩnh (extract_features) nếu có; nếu chưa train thì dùng pipeline cũ."""
-        static = self._load_static_model()
-        if static is None:
-            result = self._analyze_apk_legacy(apk_input, filename)
-            if result.get('success'):
-                result['unreliable'] = True
-                result['warning'] = ('Model tĩnh chưa được train — kết quả dựa trên pipeline cũ '
-                                     '(dò chuỗi trong DEX) và KHÔNG đáng tin cậy.')
-            return result
-        return self._analyze_apk_static(apk_input, filename, *static)
-
-    def _analyze_apk_static(self, apk_input, filename, model, encoder):
-        """Pipeline đúng: cùng extract_features() với lúc train, không cắt/đệm cột."""
+        """apk_input: bytes (upload stream) hoac duong dan file APK."""
         tmp_path = None
         try:
-            from scanner.static_features import extract_features, FEATURE_SCHEMA
-            from androguard.core.apk import APK
-
             if isinstance(apk_input, (bytes, bytearray)):
-                with tempfile.NamedTemporaryFile(suffix='.apk', delete=False) as tmp:
-                    tmp.write(bytes(apk_input))
-                    tmp_path = tmp.name
+                apk_bytes = bytes(apk_input)
+                fd, tmp_path = tempfile.mkstemp(suffix=".apk")
+                with os.fdopen(fd, "wb") as f:
+                    f.write(apk_bytes)
                 apk_path = tmp_path
             else:
                 apk_path = apk_input
+                apk_bytes = None
 
-            feats = extract_features(apk_path)
-            apk = APK(apk_path)
-            permissions = list(apk.get_permissions())
+            reasons = []
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                try:
+                    feats = _sf.extract_features(apk_path)
+                except Exception as e:
+                    feats = None
+                    reasons.append(f"extract_features thất bại: {e!r}")
+            reasons += [str(w.message) for w in caught
+                        if "AnalyzeAPK loi" in str(w.message)
+                        or "opcode" in str(w.message).lower()]
 
-            X = pd.DataFrame([{c: feats[c] for c in FEATURE_SCHEMA}])[FEATURE_SCHEMA].astype(float)
-            proba = model.predict_proba(X)[0]
-            pred = int(np.argmax(proba))
-            label = str(encoder.classes_[pred])
-            class_key = self._static_class_info(label)
-            info = self.malware_info[class_key]
-            display_name = info['name'] if class_key in ('1', '2', '3', '4') else f"{info['name']} ({label})"
+            if feats is None:
+                if apk_bytes is None:
+                    with open(apk_path, "rb") as f:
+                        apk_bytes = f.read()
+                return self._incomplete_result(filename, reasons, apk_bytes=apk_bytes)
 
-            importances = getattr(model, 'feature_importances_', np.zeros(len(FEATURE_SCHEMA)))
-            values = X.iloc[0].to_numpy()
-            present = (values != 0).astype(float)
-            contributions = present * importances
-            top_idx = np.argsort(contributions)[::-1][:15]
-            top_contributing = [
-                {'name': FEATURE_SCHEMA[i], 'present': int(present[i]),
-                 'importance': round(float(importances[i]) * 100, 3),
-                 'contribution': round(float(contributions[i]) * 100, 3)}
-                for i in top_idx if contributions[i] > 0
-            ]
-            absent_important = [
-                {'name': FEATURE_SCHEMA[i], 'importance': round(float(importances[i]) * 100, 3)}
-                for i in np.argsort(importances)[::-1][:30] if present[i] == 0
-            ][:5]
+            # Tieu chi giong train_static_model.py: tong opcode__* = 0 -> khong co DEX
+            # de phan tich -> KHONG goi predict (model khong duoc train tren vector nay).
+            opcode_cols = [c for c in self.feature_names if c.startswith("opcode__")]
+            if sum(feats[c] for c in opcode_cols) == 0:
+                if not reasons:
+                    reasons.append("Không đếm được lệnh DEX nào (tổng opcode__* = 0)")
+                return self._incomplete_result(filename, reasons, feats=feats)
 
-            perms_set = set(permissions)
-            risk_combos = [w for req, w in RISK_RULES if req.issubset(perms_set)]
-            dangerous = [p for p in permissions if f"perm__{p.split('.')[-1]}" in FEATURE_SCHEMA]
-            sample_cols = FEATURE_SCHEMA[:20]
-
-            return {
-                'success': True,
-                'type': 'apk',
-                'filename': filename,
-                'package_name': feats['package_name'],
-                'app_name': apk.get_app_name() or feats['package_name'],
-                'class': class_key,
-                'name': display_name,
-                'label': label,
-                'confidence': float(round(proba[pred] * 100, 2)),
-                'icon': info['icon'],
-                'color': info['color'],
-                'risk_level': info['risk_level'],
-                'dangerous_permissions': dangerous,
-                'all_permissions': permissions,
-                'total_permissions': len(permissions),
-                'feature_count': len(FEATURE_SCHEMA),
-                'sha256': feats['sha256'],
-                'binary_vector_sample': [float(feats[c]) for c in sample_cols],
-                'feature_column_names': sample_cols,
-                'risk_combos': risk_combos,
-                'top_contributing': top_contributing,
-                'absent_important': absent_important,
-            }
+            return self._apk_result(filename, feats)
         except Exception as e:
             import traceback
             print(traceback.format_exc())
-            return {'success': False, 'error': f"Lỗi phân tích: {str(e)}"}
+            return {"success": False, "error": f"Lỗi phân tích: {e}"}
         finally:
             if tmp_path:
-                try: os.remove(tmp_path)
-                except OSError: pass
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
-    def _analyze_apk_legacy(self, apk_input, filename):
-        """[CŨ - KHÔNG ĐÁNG TIN] Dò chuỗi trong DEX theo tên đặc trưng syscall của CICMalDroid."""
-        try:
-            from androguard.core.apk import APK
-            # Nhận bytes trực tiếp hoặc đọc từ file path
-            if isinstance(apk_input, (bytes, bytearray)):
-                apk_bytes = bytes(apk_input)
-            else:
-                with open(apk_input, 'rb') as _f:
-                    apk_bytes = _f.read()
-            sha256 = hashlib.sha256(apk_bytes).hexdigest()
-            apk = APK(apk_bytes, raw=True)
-            permissions = apk.get_permissions()
-            
-            # 1. Lấy danh sách đặc trưng mà Model/Scaler thực sự mong đợi
-            if hasattr(self.scaler, 'feature_names_in_'):
-                expected_features = self.scaler.feature_names_in_
-            else:
-                return {'success': False, 'error': 'Không tìm thấy danh sách đặc trưng trong Scaler.'}
+    def _permission_info(self, feats):
+        """Thong tin quyen (doc tu manifest, KHONG phai du doan) de hien thi."""
+        perm_cols = [c for c in self.feature_names if c.startswith("perm__")]
+        present = {c[len("perm__"):] for c in perm_cols if feats[c]}
+        return {
+            "dangerous_permissions": sorted(f"android.permission.{p}"
+                                            for p in present & SENSITIVE_PERMISSIONS),
+            "total_permissions": int(feats["num_permissions"]),
+            "risk_combos": [msg for req, msg in RISK_RULES if req.issubset(present)],
+        }
 
-            # 2. Tạo một dictionary rỗng
-            features_dict = {feat: 0 for feat in expected_features}
-            # ==========================================
-        
-            # 3. Khớp (Map) đặc trưng bằng cách quét thẳng vào Bytecode (RAW DEX)
-            found_count = 0
-            
-            try:
-                raw_data = b""
-                
-                # 1. Quét RAW toàn bộ các file .dex trong APK
-                for fname in apk.get_files():
-                    if fname.endswith('.dex'):
-                        raw_data += apk.get_file(fname)
-                
-                # 2. Gộp thêm danh sách Permissions, Activities, Services
-                all_components = permissions + apk.get_activities() + apk.get_services()
-                components_str = " ".join(all_components).lower()
-                raw_data += components_str.encode('utf-8', errors='ignore')
-                
-                # 3. Thuật toán tìm kiếm siêu tốc trên Bytes
-                for feat in expected_features:
-                    # Gọt chữ (VD: 'CREATE_FOLDER___' -> 'create_folder')
-                    clean_feat = feat.strip('_').lower()
-                    
-                    # Kiểm tra trực tiếp xem từ khóa có nằm trong đống byte mã nguồn không
-                    if clean_feat.encode('utf-8', errors='ignore') in raw_data:
-                        features_dict[feat] = 1
-                        found_count += 1
-                        
-            except Exception as e:
-                print(f"[-] Lỗi quét RAW: {e}")
+    def _incomplete_result(self, filename, reasons, feats=None, apk_bytes=None):
+        """
+        Khong co DEX phan tich duoc -> KHONG goi predict. Van tra co tamper, sha256,
+        package_name (va thong tin quyen neu manifest doc duoc).
+        """
+        if feats is not None:
+            tamper = {k: int(feats[k]) for k in ("manifest_tampered", "zip_tampered")}
+            sha256, package, source = feats["sha256"], feats["package_name"], feats["manifest_source"]
+            perm_info = self._permission_info(feats)
+        else:
+            tamper = _sf._tamper_flags(apk_bytes)  # (1,1) neu khong doc duoc cau truc
+            sha256, package, source = hashlib.sha256(apk_bytes).hexdigest(), None, None
+            perm_info = {"dangerous_permissions": [], "total_permissions": 0, "risk_combos": []}
+        return {
+            "success": True,
+            "type": "apk",
+            "filename": filename,
+            "analysis_incomplete": True,
+            "incomplete_reasons": reasons,
+            "label": UNKNOWN_LABEL,
+            "probabilities": {},
+            "all_probabilities": {},
+            "confidence": None,
+            **INCOMPLETE_INFO,
+            "notes": [INCOMPLETE_NOTE],
+            "manifest_source": source,
+            "manifest_tampered": tamper["manifest_tampered"],
+            "zip_tampered": tamper["zip_tampered"],
+            "sha256": sha256,
+            "package_name": package,
+            "app_name": package,
+            **perm_info,
+            "feature_count": 0,
+            "top_contributing": [],
+            "absent_important": [],
+        }
 
-            print(f"📊 [DEBUG] Đã KHỚP thành công {found_count}/{len(expected_features)} đặc trưng.")
+    def _apk_result(self, filename, feats):
+        X = self._vector(feats)
+        labels, proba = self._predict(X)
+        label = str(labels[0])
+        probs = {c: round(float(p) * 100, 2) for c, p in zip(self.class_names, proba[0])}
+        class_idx = self.class_names.index(label)
+        info = MALWARE_INFO[label]
 
-            # 4. Tạo DataFrame và BẮT BUỘC giữ đúng thứ tự cột
-            feature_df = pd.DataFrame([features_dict])[expected_features]
+        notes = [ADWARE_NOTE] if label == "Adware" else []
 
-            # 5. Tiến hành dự đoán
-            X_scaled = self.scaler.transform(feature_df)
-            pred = int(self.model.predict(X_scaled)[0])
-            prob = self.model.predict_proba(X_scaled)[0][pred] * 100
-            
-            class_key = str(pred + 1)
-            info = self.malware_info.get(class_key, self.malware_info['1'])
-            
-            dangerous_found = [p for p in permissions if p.split('.')[-1] + "__" in expected_features]
-
-            # Binary vector mẫu (20 cột đầu) để hiển thị trong UI
-            sample_cols = list(expected_features[:20])
-            binary_vector_sample = [int(features_dict[c]) for c in sample_cols]
-
-            # Top contributing features: contribution = feature_value × global_importance
-            # Cho biết đặc trưng nào trong APK này đã "kéo" model về kết quả phân loại
-            importances = self.model.feature_importances_
-            feat_values = np.array([features_dict[f] for f in expected_features])
-            contributions = feat_values * importances
-            top_idx = np.argsort(contributions)[::-1][:15]
-            top_contributing = [
-                {
-                    'name': str(expected_features[i]),
-                    'present': int(feat_values[i]),
-                    'importance': round(float(importances[i]) * 100, 3),
-                    'contribution': round(float(contributions[i]) * 100, 3),
-                }
-                for i in top_idx if contributions[i] > 0
-            ]
-            # Top vắng mặt nhưng quan trọng (absent but high importance)
+        importances = getattr(self.model, "feature_importances_", None)
+        absent_important = []
+        if importances is not None:
             absent_important = [
-                {
-                    'name': str(expected_features[i]),
-                    'importance': round(float(importances[i]) * 100, 3),
-                }
-                for i in np.argsort(importances)[::-1][:30]
-                if feat_values[i] == 0
+                {"name": self.feature_names[i], "importance": round(float(importances[i]) * 100, 3)}
+                for i in np.argsort(importances)[::-1] if X.iloc[0, i] == 0
             ][:5]
 
-            # Static risk combo — phát hiện tổ hợp quyền nguy hiểm
-            perms_set = set(permissions)
-            risk_combos = []
-            RISK_RULES = [
-                ({'android.permission.READ_SMS', 'android.permission.INTERNET'},
-                 'Có thể đánh cắp mã OTP và gửi về máy chủ từ xa'),
-                ({'android.permission.RECORD_AUDIO', 'android.permission.INTERNET'},
-                 'Có thể nghe lén và truyền âm thanh lên mạng'),
-                ({'android.permission.ACCESS_FINE_LOCATION', 'android.permission.INTERNET'},
-                 'Có thể theo dõi vị trí GPS và gửi về máy chủ'),
-                ({'android.permission.READ_CONTACTS', 'android.permission.SEND_SMS'},
-                 'Có thể phát tán spam SMS tới toàn bộ danh bạ'),
-                ({'android.permission.CAMERA', 'android.permission.INTERNET'},
-                 'Có thể chụp ảnh bí mật và upload lên mạng'),
-                ({'android.permission.READ_CALL_LOG', 'android.permission.INTERNET'},
-                 'Có thể rò rỉ lịch sử cuộc gọi ra ngoài'),
-                ({'android.permission.WRITE_EXTERNAL_STORAGE', 'android.permission.READ_SMS'},
-                 'Có thể sao chép tin nhắn vào thẻ nhớ'),
-            ]
-            for required_perms, warning in RISK_RULES:
-                if required_perms.issubset(perms_set):
-                    risk_combos.append(warning)
+        sample_cols = self.feature_names[:20]
+        return {
+            "success": True,
+            "type": "apk",
+            "filename": filename,
+            "analysis_incomplete": False,
+            "incomplete_reasons": [],
+            # --- ket qua model ---
+            "label": label,
+            "probabilities": probs,          # {ten lop: %}
+            "all_probabilities": probs,      # khoa cu ma scan.html dung de ve bieu do
+            "confidence": probs[label],
+            "class": info["class"],
+            "name": info["name"],
+            "icon": info["icon"],
+            "color": info["color"],
+            "risk_level": info["risk_level"],
+            "notes": notes,
+            # --- metadata tu extract_features ---
+            "manifest_source": feats["manifest_source"],
+            "manifest_tampered": int(feats["manifest_tampered"]),
+            "zip_tampered": int(feats["zip_tampered"]),
+            "sha256": feats["sha256"],
+            "package_name": feats["package_name"],
+            "app_name": feats["package_name"],  # extract_features khong doc ten app
+            # --- giai thich / hien thi ---
+            **self._permission_info(feats),
+            "feature_count": int((X.iloc[0] != 0).sum()),  # so cot khac 0 / len(schema)
+            "binary_vector_sample": [float(X.iloc[0][c]) for c in sample_cols],
+            "feature_column_names": sample_cols,
+            "top_contributing": self._contributions(X, class_idx),
+            "absent_important": absent_important,
+        }
 
-            confidence_score = float(round(prob, 2))
+    # ------------------------------------------------------------------- CSV
+    def analyze_csv(self, filepath, filename):
+        """
+        CSV dac trung tinh (vd dataset/processed/static_features.csv). Phai co DU cac cot
+        trong schema, dung ten; khong dien cot thieu.
+        """
+        df = pd.read_csv(filepath, low_memory=False)
+        missing = [c for c in self.feature_names if c not in df.columns]
+        if missing:
+            return {"success": False,
+                    "error": f"CSV thiếu {len(missing)}/{len(self.feature_names)} cột của schema "
+                             f"Tầng 1 (vd: {missing[:5]}). Hãy tạo CSV bằng extract_features()."}
+        X = df[self.feature_names].apply(pd.to_numeric, errors="coerce")
+        bad_rows = int(X.isna().any(axis=1).sum())
+        if bad_rows:
+            return {"success": False, "error": f"{bad_rows} dòng có giá trị không phải số trong cột đặc trưng."}
 
-            return {
-                'success': True,
-                'type': 'apk',
-                'filename': filename,
-                'package_name': apk.get_package(),
-                'app_name': apk.get_app_name() or apk.get_package(),
-                'class': class_key,
-                'name': info['name'],
-                'confidence': confidence_score,
-                'icon': info['icon'],
-                'color': info['color'],
-                'risk_level': info['risk_level'],
-                'dangerous_permissions': dangerous_found,
-                'all_permissions': list(permissions),
-                'total_permissions': len(permissions),
-                'feature_count': found_count,
-                'sha256': sha256,
-                'binary_vector_sample': binary_vector_sample,
-                'feature_column_names': sample_cols,
-                'risk_combos': risk_combos,
-                'top_contributing': top_contributing,
-                'absent_important': absent_important,
-            }
+        labels, proba = self._predict(X.astype(float))
+        stats = {}
+        uniq, counts = np.unique(labels, return_counts=True)
+        for lbl, cnt in zip(uniq, counts):
+            stats[MALWARE_INFO[str(lbl)]["class"]] = {
+                "count": int(cnt), "percentage": round(float(cnt) / len(labels) * 100, 2)}
 
-        except Exception as e:
-            import traceback
-            print(traceback.format_exc())
-            return {'success': False, 'error': f"Lỗi phân tích: {str(e)}"}
+        first = str(labels[0])
+        info = MALWARE_INFO[first]
+        return {
+            "success": True,
+            "type": "csv",
+            "filename": filename,
+            "total_samples": len(df),
+            "statistics": stats,
+            "first_sample": {
+                "class": info["class"],
+                "label": first,
+                "name": info["name"],
+                "confidence": round(float(proba[0].max()) * 100, 2),
+                "icon": info["icon"],
+                "risk_level": info["risk_level"],
+                "notes": [ADWARE_NOTE] if first == "Adware" else [],
+            },
+        }
 
 
 if __name__ == "__main__":
-    import sys
-    detector = MalwareDetector()
-    
     if len(sys.argv) < 2:
-        print("Usage: python detect_and_classify.py <file_path>")
+        print("Usage: python scanner/detect_and_classify.py <file.apk|file.csv> [...]")
         sys.exit(1)
-    
-    filepath = sys.argv[1]
-    filename = os.path.basename(filepath)
-    
-    if filename.endswith('.csv'):
-        result = detector.analyze_csv(filepath, filename)
-    elif filename.endswith('.apk'):
-        result = detector.analyze_apk(filepath, filename)
-    else:
-        print("Unsupported file type")
-        sys.exit(1)
-    
-    if result['success']:
-        print(f"\n📊 KẾT QUẢ: {result['filename']}")
-        print(f"   Kết quả: {result['name']}")
-        print(f"   Độ tin cậy: {result['confidence']}%")
-    else:
-        print(f"Lỗi: {result['error']}")
+    detector = MalwareDetector()
+    for filepath in sys.argv[1:]:
+        filename = os.path.basename(filepath)
+        if filename.lower().endswith(".csv"):
+            result = detector.analyze_csv(filepath, filename)
+        elif filename.lower().endswith(".apk"):
+            result = detector.analyze_apk(filepath, filename)
+        else:
+            print(f"Bỏ qua (không hỗ trợ): {filepath}")
+            continue
+        keys = ["success", "label", "probabilities", "manifest_source", "manifest_tampered",
+                "zip_tampered", "sha256", "package_name", "analysis_incomplete",
+                "incomplete_reasons", "notes", "error"]
+        print(f"\n📊 {filename}")
+        print(json.dumps({k: result.get(k) for k in keys if k in result},
+                         ensure_ascii=False, indent=2))

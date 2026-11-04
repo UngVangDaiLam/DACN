@@ -8,6 +8,7 @@ from scanner.static_features import FEATURE_SCHEMA
 
 CLASSES = ["Benign", "Adware", "Banking", "SMS", "Riskware"]
 df = pd.read_csv("dataset/processed/static_features.csv")
+df = df[df[[c for c in FEATURE_SCHEMA if c.startswith("opcode__")]].sum(axis=1) > 0]
 df = df[df.label.isin(CLASSES)]
 le = LabelEncoder()
 y = le.fit_transform(df.label)

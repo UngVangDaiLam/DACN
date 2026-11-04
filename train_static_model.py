@@ -72,6 +72,17 @@ def load_data():
     df = df[df["label"].isin(CLASSES)].reset_index(drop=True)
     print(f"Con lai {len(df)} mau cho bai toan 5 lop.")
 
+    # APK khong dem duoc lenh DEX nao (DEX hong/bi lam meo) -> moi cot opcode__* = 0.
+    # Luc suy luan, mau nhu vay bi danh dau analysis_incomplete va KHONG du doan,
+    # nen cung loai khoi train/danh gia de model khong hoc tu vector thieu.
+    opcode_cols = [c for c in MODEL_FEATURES if c.startswith("opcode__")]
+    no_dex = df[opcode_cols].fillna(0).sum(axis=1) == 0
+    print(f"\nLoai {int(no_dex.sum())} mau co tong opcode__* = 0 (khong dem duoc lenh DEX):")
+    if no_dex.any():
+        print(df.loc[no_dex, "label"].value_counts().to_string())
+    df = df[~no_dex].reset_index(drop=True)
+    print(f"Con lai {len(df)} mau de train/danh gia.")
+
     counts = df["label"].value_counts()
 
     if counts.shape[0] < 2:
@@ -109,7 +120,9 @@ def main():
     w_train = compute_sample_weight("balanced", y_train)
 
     if HAS_XGB:
-        print("\nHuan luyen XGBoost...")
+        import xgboost
+        print(f"\nHuan luyen XGBoost (xgboost {xgboost.__version__}, python {sys.version.split()[0]}, "
+              f"{sys.executable})...")
         clf = XGBClassifier(
             n_estimators=300, max_depth=6, learning_rate=0.1,
             subsample=0.9, colsample_bytree=0.9, random_state=42,

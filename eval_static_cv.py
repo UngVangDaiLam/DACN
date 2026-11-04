@@ -1,10 +1,11 @@
-import numpy as np, pandas as pd
+﻿import numpy as np, pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.metrics import precision_score, recall_score, f1_score
 from xgboost import XGBClassifier
 from scanner.static_features import FEATURE_SCHEMA
 
 df = pd.read_csv("dataset/processed/static_features.csv")
+df = df[df[[c for c in FEATURE_SCHEMA if c.startswith("opcode__")]].sum(axis=1) > 0]
 y = (df["label"] != "Benign").astype(int).values
 print("Benign:", (y == 0).sum(), "| Malware:", (y == 1).sum())
 
@@ -21,8 +22,8 @@ def run(cols, name):
         P.append(precision_score(y[te], p, zero_division=0))
         R.append(recall_score(y[te], p, zero_division=0))
         F.append(f1_score(y[te], p, zero_division=0))
-    print(f"{name:32s} precision={np.mean(P):.2f}±{np.std(P):.2f}  "
-          f"recall={np.mean(R):.2f}±{np.std(R):.2f}  f1={np.mean(F):.2f}±{np.std(F):.2f}")
+    print(f"{name:32s} precision={np.mean(P):.2f}Â±{np.std(P):.2f}  "
+          f"recall={np.mean(R):.2f}Â±{np.std(R):.2f}  f1={np.mean(F):.2f}Â±{np.std(F):.2f}")
 
 run(FEATURE_SCHEMA, "Day du 73 dac trung")
 NO_TAMPER = [c for c in FEATURE_SCHEMA if c not in ("manifest_tampered", "zip_tampered")]

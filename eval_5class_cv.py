@@ -1,4 +1,4 @@
-import sys, numpy as np, pandas as pd
+﻿import sys, numpy as np, pandas as pd
 from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.preprocessing import LabelEncoder
@@ -8,6 +8,7 @@ from scanner.static_features import FEATURE_SCHEMA
 
 CLASSES = ["Benign", "Adware", "Banking", "SMS", "Riskware"]
 df = pd.read_csv("dataset/processed/static_features.csv")
+df = df[df[[c for c in FEATURE_SCHEMA if c.startswith("opcode__")]].sum(axis=1) > 0]
 df = df[df.label.isin(CLASSES)]
 cnt = df.label.value_counts()
 print(cnt.to_string())
@@ -42,4 +43,4 @@ print("Ma tran nham lan cong don (hang=that, cot=du doan):")
 print(cm)
 for i, c in enumerate(le.classes_):
     print(f"  {c:10s} recall = {cm[i, i] / cm[i].sum():.2f}  ({cm[i, i]}/{cm[i].sum()})")
-print(f"Macro F1 trung binh = {np.mean(f1s):.2f} ± {np.std(f1s):.2f}")
+print(f"Macro F1 trung binh = {np.mean(f1s):.2f} Â± {np.std(f1s):.2f}")
