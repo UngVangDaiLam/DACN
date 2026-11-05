@@ -75,6 +75,7 @@
             document.getElementById(panes[k][1]).hidden = !on;
         });
     }
+    if (new URLSearchParams(window.location.search).get('type') === 'csv') show('csv');
     document.getElementById('tabApk').addEventListener('click', function () { show('apk'); });
     document.getElementById('tabCsv').addEventListener('click', function () { show('csv'); });
     ['tabApk', 'tabCsv'].forEach(function (id) {

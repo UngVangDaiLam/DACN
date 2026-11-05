@@ -2,43 +2,33 @@
 {% block title %}Tổng quan · AndroWall{% endblock %}
 {% block content %}
 <header class="page-head overview-heading">
-    <div><span class="eyebrow">KHÔNG GIAN PHÂN TÍCH</span><h1>Tổng quan</h1><p>Mỗi ứng dụng đều để lại dấu vết. Bắt đầu từ một file APK.</p></div>
-    <a href="/history" class="btn btn-ghost"><i class="fas fa-clock-rotate-left me-2"></i>Lịch sử quét</a>
+    <div><span class="eyebrow">ANDROID SECURITY WORKSPACE</span><h1>Không gian phân tích<span class="title-dot">.</span></h1><p>Kiểm tra ứng dụng trước khi bạn tin tưởng nó.</p></div>
+    <a href="/scan" class="btn btn-cyber"><i class="fas fa-plus me-2" aria-hidden="true"></i>Phiên phân tích mới</a>
 </header>
 
-<section class="analysis-banner" aria-labelledby="analysisTitle">
-    <div class="banner-copy">
-        <span class="banner-label"><span></span> ANDROID MALWARE ANALYSIS</span>
-        <h2 id="analysisTitle">Hiểu ứng dụng.<br>Nhìn rõ rủi ro.</h2>
-        <p>Kiểm tra quyền truy cập, mã nguồn và dấu hiệu đáng ngờ trước khi đưa ứng dụng vào thiết bị.</p>
-        <a href="/scan" class="btn btn-cyber btn-cta"><span>Bắt đầu phân tích</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span></a>
-        <div class="banner-meta"><span><i class="fas fa-file-code"></i> File APK</span><span><i class="fas fa-list-check"></i> Bằng chứng chi tiết</span><span><i class="fas fa-file-csv"></i> Phân loại CSV</span></div>
-    </div>
-    <div class="artifact-visual" aria-hidden="true">
-        <div class="artifact-grid"></div>
-        <div class="artifact-label label-top">01 / STATIC INSPECTION</div>
-        <div class="apk-artifact"><div class="artifact-corner"></div><svg viewBox="0 0 80 80" fill="none"><path d="M23 31h34v24a5 5 0 0 1-5 5H28a5 5 0 0 1-5-5V31Z" fill="currentColor"/><path d="M23 27a17 17 0 0 1 34 0H23Z" fill="currentColor"/><path d="m28 10-4-6m28 6 4-6M17 32v21m46-21v21M31 59v13m18-13v13" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="20" r="2" fill="#102b27"/><circle cx="48" cy="20" r="2" fill="#102b27"/></svg><strong>application.apk</strong><span>MANIFEST · DEX · SIGNATURE</span></div>
-        <div class="artifact-tag tag-manifest"><i class="fas fa-code"></i> AndroidManifest.xml</div><div class="artifact-tag tag-dex"><i class="fas fa-fingerprint"></i> classes.dex</div>
-        <div class="artifact-label label-bottom">QUYỀN TRUY CẬP <span>→</span> BẰNG CHỨNG <span>→</span> ĐÁNH GIÁ</div>
-    </div>
-</section>
-
-<section class="overview-metrics" aria-label="Hoạt động trong trình duyệt">
-    <div class="metric"><div class="metric-icon"><i class="fas fa-layer-group"></i></div><div><span>Lượt phân tích</span><strong id="homeScans">0</strong></div><span class="metric-note">Trong trình duyệt này</span></div>
-    <div class="metric"><div class="metric-icon"><i class="fas fa-file-shield"></i></div><div><span>Mẫu đã xử lý</span><strong id="homeSamples">0</strong></div><span class="metric-note">APK và dòng CSV</span></div>
-    <a class="metric metric-action" href="/scan"><div class="metric-icon"><i class="fas fa-plus"></i></div><div><span>Tiếp tục công việc</span><strong>Quét mẫu mới</strong></div><i class="fas fa-arrow-up-right-from-square"></i></a>
-</section>
-
-<div class="overview-grid">
-    <section class="panel recent-panel">
-        <div class="section-heading"><div><span class="eyebrow">HOẠT ĐỘNG</span><h2>Phân tích gần đây</h2></div><a href="/history" class="btn-arrow">Xem tất cả <i class="fas fa-arrow-right"></i></a></div>
-        <div class="table-responsive" id="homeRecentTable" hidden><table class="table align-middle mb-0"><thead><tr><th>Tên file</th><th>Thời gian</th><th class="text-end">Kết quả mẫu đầu</th></tr></thead><tbody id="homeRecentBody"></tbody></table></div>
-        <div class="home-empty" id="homeEmpty"><span class="empty-symbol"><i class="far fa-folder-open"></i></span><h3>Chưa có phiên phân tích</h3><p>Kết quả của bạn sẽ xuất hiện tại đây sau lần quét đầu tiên.</p><a href="/scan" class="btn btn-ghost">Chọn mẫu đầu tiên <i class="fas fa-arrow-right ms-2"></i></a></div>
-        <div class="panel-bottom"><i class="fas fa-laptop"></i> Lịch sử được lưu trong trình duyệt bạn đang sử dụng.</div>
+<div class="analysis-layout">
+    <section class="launch-panel" aria-labelledby="launchTitle">
+        <div class="launch-top"><span class="section-index">01 / PHÂN TÍCH TĨNH</span><span class="format-label">.APK</span></div>
+        <div class="launch-center">
+            <div class="inspection-mark" aria-hidden="true"><span class="inspection-axis axis-x"></span><span class="inspection-axis axis-y"></span><svg viewBox="0 0 120 140" fill="none"><path d="M60 10 102 29v37c0 30-17 49-42 64-25-15-42-34-42-64V29L60 10Z" stroke="currentColor" stroke-width="2"/><path d="m60 28 27 12v26c0 21-11 35-27 46-16-11-27-25-27-46V40l27-12Z" stroke="currentColor" stroke-opacity=".35"/><path d="m44 65 11 11 23-26" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></svg><span class="inspection-coordinate">AW / INSPECT</span></div>
+            <div class="launch-copy"><h2 id="launchTitle">Một file APK.<br><span>Nhiều góc nhìn.</span></h2><p>Đọc quyền truy cập, kiểm tra cấu trúc và đối chiếu các dấu hiệu đáng ngờ trong ứng dụng Android.</p><a href="/scan" class="btn btn-cyber launch-button">Phân tích APK <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a><span class="launch-hint">Chọn file ở bước tiếp theo · Tối đa 500 MB</span></div>
+        </div>
+        <div class="inspection-tags"><span><i class="fas fa-code" aria-hidden="true"></i>Manifest &amp; DEX</span><span><i class="fas fa-fingerprint" aria-hidden="true"></i>Chữ ký số</span><span><i class="fas fa-list-check" aria-hidden="true"></i>Bằng chứng</span></div>
     </section>
-    <section class="panel workflow-panel"><div class="section-heading"><div><span class="eyebrow">CÁCH HOẠT ĐỘNG</span><h2>Từ mẫu đến bằng chứng</h2></div><i class="fas fa-route text-muted"></i></div><ol class="steps"><li><h3>Chọn mẫu phân tích</h3><p>Tải APK hoặc CSV đặc trưng.</p></li><li><h3>Kiểm tra và đối chiếu</h3><p>Đọc cấu trúc, đánh giá bằng mô hình và các luật hiện có.</p></li><li><h3>Xem kết quả chi tiết</h3><p>Đọc mức rủi ro, quyền và bằng chứng để kiểm tra lại.</p></li></ol><a href="/about" class="workflow-link">Tìm hiểu phạm vi phân tích <i class="fas fa-arrow-right"></i></a></section>
+    <aside class="analysis-rail" aria-label="Hoạt động và lối tắt">
+        <div class="rail-heading"><span class="eyebrow">HOẠT ĐỘNG CỦA BẠN</span><span class="local-label"><i class="fas fa-laptop" aria-hidden="true"></i> Trình duyệt này</span></div>
+        <div class="rail-stat"><div><span>Lượt phân tích</span><strong id="homeScans">0</strong></div><i class="fas fa-arrow-trend-up" aria-hidden="true"></i></div>
+        <div class="rail-stat"><div><span>Mẫu đã xử lý</span><strong id="homeSamples">0</strong></div><span class="stat-unit">APK / CSV</span></div>
+        <a href="/scan?type=csv" class="csv-entry"><span class="csv-symbol"><i class="fas fa-table-cells" aria-hidden="true"></i></span><span><strong>Đã có bộ đặc trưng?</strong><small>Phân loại hàng loạt từ CSV</small></span><i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+    </aside>
 </div>
 
-<section class="classification-strip"><div><span class="eyebrow">ĐỌC KẾT QUẢ</span><h2>Năm nhóm phân loại</h2></div><div class="class-labels"><span><i style="--class-color:var(--c-benign)"></i>Benign</span><span><i style="--class-color:var(--c-adware)"></i>Adware</span><span><i style="--class-color:var(--c-banking)"></i>Banking</span><span><i style="--class-color:var(--c-sms)"></i>SMS</span><span><i style="--class-color:var(--c-riskware)"></i>Riskware</span></div><a href="/about" aria-label="Giải thích các nhóm phân loại"><i class="far fa-circle-question"></i></a></section>
+<section class="activity-section" aria-labelledby="recentTitle">
+    <div class="section-heading"><div><span class="section-index">02 / NHẬT KÝ</span><h2 id="recentTitle">Phiên gần đây</h2></div><a href="/history" class="btn-arrow">Toàn bộ lịch sử <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
+    <div class="table-responsive" id="homeRecentTable" hidden><table class="table align-middle mb-0"><thead><tr><th>Tên file</th><th>Thời gian</th><th class="text-end">Kết quả mẫu đầu</th></tr></thead><tbody id="homeRecentBody"></tbody></table></div>
+    <div class="home-empty" id="homeEmpty"><div class="empty-document" aria-hidden="true"><i class="far fa-file-lines"></i><span></span><span></span></div><div><h3>Bàn làm việc đang trống</h3><p>Thêm mẫu đầu tiên. Mỗi kết quả sẽ được giữ lại để bạn đối chiếu.</p></div><a href="/scan" class="btn btn-ghost">Bắt đầu phân tích <i class="fas fa-arrow-right ms-2" aria-hidden="true"></i></a></div>
+</section>
+
+<section class="reading-note"><span class="note-icon"><i class="fas fa-circle-info" aria-hidden="true"></i></span><div><h2>Một nhãn phân loại chưa phải toàn bộ câu chuyện.</h2><p>Luôn đọc bằng chứng, cảnh báo và phạm vi phân tích trước khi kết luận một ứng dụng an toàn.</p></div><a href="/about">Hiểu kết quả <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a></section>
 {% endblock %}
 {% block extra_js %}<script src="{{ url_for('static', filename='js/overview.js') }}"></script>{% endblock %}
