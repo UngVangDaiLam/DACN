@@ -2,100 +2,108 @@
 {% block title %}Scanner - DroidGuard AI{% endblock %}
 
 {% block content %}
-<style>
-    /* === CSS dùng riêng cho việc xuất PDF (html2canvas) === */
-    #pdf-export-clone {
-        background-color: #ffffff !important;
-        color: #1a1a2e !important;
-        padding: 24px !important;
-        font-family: 'Space Grotesk', sans-serif !important;
-    }
-    #pdf-export-clone * {
-        color: #1a1a2e !important;
-        border-color: #cbd5e1 !important;
-        background-color: transparent !important;
-        text-shadow: none !important;
-        box-shadow: none !important;
-    }
-    #pdf-export-clone h3, #pdf-export-clone h4, #pdf-export-clone h5, #pdf-export-clone h6,
-    #pdf-export-clone strong, #pdf-export-clone .fw-bold {
-        color: #0f172a !important;
-    }
-    #pdf-export-clone .text-info, #pdf-export-clone .text-gradient {
-        color: #0284c7 !important;
-    }
-    #pdf-export-clone .text-danger { color: #dc2626 !important; }
-    #pdf-export-clone .text-success { color: #16a34a !important; }
-    #pdf-export-clone .text-warning { color: #d97706 !important; }
-    #pdf-export-clone code { color: #0284c7 !important; background: #f0f9ff !important; padding: 2px 6px; border-radius: 4px; }
-    #pdf-export-clone .badge { background: #e2e8f0 !important; color: #334155 !important; border: 1px solid #94a3b8 !important; }
-    #pdf-export-clone .list-group-item { background: #f8fafc !important; border-bottom: 1px solid #e2e8f0 !important; }
-    #pdf-export-clone .rounded-3, #pdf-export-clone .card, #pdf-export-clone .p-4 {
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-    }
-    /* Ẩn các phần không cần in */
-    #pdf-export-clone .btn,
-    #pdf-export-clone #scanLog,
-    #pdf-export-clone .radar,
-    #pdf-export-clone .progress,
-    #pdf-export-clone #scanPercentage {
-        display: none !important;
-    }
-</style>
-<div class="container-fluid py-3 fade-in">
-    <h3 class="mb-4 text-white" style="text-shadow: 0 0 10px var(--neon-cyan);">
-        <i class="fas fa-terminal me-2"></i> Malware Analysis Module
-    </h3>
+<header class="page-head">
+    <div>
+        <h1>Quét mẫu</h1>
+        <p>Nạp file APK để phân tích, hoặc file CSV đặc trưng để phân loại hàng loạt.</p>
+    </div>
+</header>
 
-    <div class="row g-4">
-        <!-- Cột Form Tải file -->
-        <div class="col-lg-4">
-            <div class="card mb-4" style="border-left: 4px solid var(--neon-cyan) !important;">
-                <div class="card-body">
-                    <h5 class="text-info mb-3"><i class="fas fa-file-csv me-2"></i>Batch Analysis (CSV)</h5>
-                    <p class="text-light small mb-3" style="opacity: 0.8;">Tải lên file đặc trưng dạng CSV để phân loại hàng loạt.</p>
-                    <form id="csvForm">
-                        <div class="mb-3">
-                            <input type="file" class="form-control bg-dark text-light border-secondary" id="csvFile" accept=".csv" required>
-                        </div>
-                        <button type="submit" class="btn btn-cyber w-100 py-2" id="csvScanBtn">
-                            <i class="fas fa-search me-1"></i> Quét CSV
-                        </button>
-                    </form>
-                </div>
+<div class="row g-4">
+    <!-- Cột nạp mẫu -->
+    <div class="col-xl-4 col-lg-5">
+        <section class="panel panel-pad">
+            <div class="seg mb-3" role="tablist" aria-label="Loại mẫu">
+                <button type="button" role="tab" id="tabApk" aria-selected="true" aria-controls="apkForm">APK</button>
+                <button type="button" role="tab" id="tabCsv" aria-selected="false" aria-controls="csvForm">CSV hàng loạt</button>
             </div>
 
-            <div class="card" style="border-left: 4px solid var(--neon-red) !important;">
-                <div class="card-body">
-                    <h5 class="text-danger mb-3"><i class="fas fa-mobile-alt me-2"></i>Deep Analysis (APK)</h5>
-                    <p class="text-light small mb-3" style="opacity: 0.8;">Phân tích tĩnh ứng dụng Android (quyền, đặc trưng).</p>
-                    <form id="apkForm">
-                        <div class="mb-3">
-                            <input type="file" class="form-control bg-dark text-light border-secondary" id="apkFile" accept=".apk" required>
-                        </div>
-                        <button type="submit" class="btn w-100 py-2 text-white" style="background: rgba(244, 63, 94, 0.1); border: 1px solid var(--neon-red); box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);" id="apkScanBtn" onmouseover="this.style.background='var(--neon-red)'; this.style.color='#000';" onmouseout="this.style.background='rgba(244, 63, 94, 0.1)'; this.style.color='#fff';">
-                            <i class="fas fa-search me-1"></i> Quét APK
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
+            <form id="apkForm" role="tabpanel" aria-labelledby="tabApk">
+                <label class="dropzone" id="apkDrop">
+                    <i class="fas fa-mobile-screen dropzone-icon"></i>
+                    <strong>Kéo file APK vào đây</strong>
+                    <span class="hint">hoặc bấm để chọn file, tối đa 500 MB</span>
+                    <span class="picked" id="apkPicked" hidden></span>
+                    <input type="file" id="apkFile" accept=".apk" required>
+                </label>
+                <p class="panel-note mt-3 mb-3">Phân tích tĩnh: quyền, đặc trưng, bytecode và chữ ký số.</p>
+                <button type="submit" class="btn btn-cyber btn-cta w-100" id="apkScanBtn">
+                    <span>Quét APK</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span>
+                </button>
+            </form>
 
-        <!-- Cột Hiển thị Terminal và Kết quả -->
-        <div class="col-lg-8">
-            <div class="card h-100" style="min-height: 500px;">
-                <div class="card-body d-flex flex-column" id="resultContainer">
-                    <div class="text-center m-auto text-light" style="opacity: 0.6;">
-                        <i class="fas fa-shield-alt fa-4x mb-3" style="opacity: 0.5; filter: drop-shadow(0 0 10px currentColor);"></i>
-                        <h5>Hệ thống sẵn sàng tiếp nhận mẫu</h5>
-                        <p class="small">Vui lòng tải lên file APK hoặc CSV từ bảng điều khiển bên trái.</p>
-                    </div>
+            <form id="csvForm" role="tabpanel" aria-labelledby="tabCsv" hidden>
+                <label class="dropzone" id="csvDrop">
+                    <i class="fas fa-file-csv dropzone-icon"></i>
+                    <strong>Kéo file CSV vào đây</strong>
+                    <span class="hint">hoặc bấm để chọn file</span>
+                    <span class="picked" id="csvPicked" hidden></span>
+                    <input type="file" id="csvFile" accept=".csv" required>
+                </label>
+                <p class="panel-note mt-3 mb-3">Mỗi dòng là một mẫu đã có sẵn vector đặc trưng. Mô hình phân loại hàng loạt.</p>
+                <button type="submit" class="btn btn-cyber btn-cta w-100" id="csvScanBtn">
+                    <span>Quét CSV</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span>
+                </button>
+            </form>
+        </section>
+    </div>
+
+    <!-- Cột kết quả -->
+    <div class="col-xl-8 col-lg-7">
+        <section class="panel h-100" style="min-height: 520px;">
+            <div class="p-4 d-flex flex-column h-100" id="resultContainer">
+                <div class="text-center m-auto" style="max-width: 36ch;">
+                    <i class="fas fa-magnifying-glass-chart fa-2x mb-3 text-muted"></i>
+                    <h2 class="panel-title">Chưa có mẫu nào</h2>
+                    <p class="text-muted mb-0">Chọn một file ở khung bên trái. Kết quả và nhật ký từng bước sẽ hiện ở đây.</p>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 </div>
+
+<script>
+// Chuyển giữa APK / CSV và xử lý kéo-thả file
+(function () {
+    var panes = { apk: ['tabApk', 'apkForm'], csv: ['tabCsv', 'csvForm'] };
+    function show(which) {
+        Object.keys(panes).forEach(function (k) {
+            var on = k === which;
+            document.getElementById(panes[k][0]).setAttribute('aria-selected', on ? 'true' : 'false');
+            document.getElementById(panes[k][1]).hidden = !on;
+        });
+    }
+    document.getElementById('tabApk').addEventListener('click', function () { show('apk'); });
+    document.getElementById('tabCsv').addEventListener('click', function () { show('csv'); });
+
+    [['apkDrop', 'apkFile', 'apkPicked'], ['csvDrop', 'csvFile', 'csvPicked']].forEach(function (ids) {
+        var zone = document.getElementById(ids[0]);
+        var input = document.getElementById(ids[1]);
+        var picked = document.getElementById(ids[2]);
+
+        function paint() {
+            var f = input.files && input.files[0];
+            zone.classList.toggle('has-file', !!f);
+            picked.hidden = !f;
+            picked.textContent = f ? f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)' : '';
+        }
+        input.addEventListener('change', paint);
+        ['dragenter', 'dragover'].forEach(function (ev) {
+            zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('is-over'); });
+        });
+        ['dragleave', 'drop'].forEach(function (ev) {
+            zone.addEventListener(ev, function () { zone.classList.remove('is-over'); });
+        });
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                paint();
+            }
+        });
+    });
+})();
+</script>
 
 <script>
 // Logic lưu lịch sử đã được vá lỗi
@@ -156,96 +164,97 @@ document.addEventListener('DOMContentLoaded', function() {
     async function scanFile(file, endpoint, type) {
         const resultDiv = document.getElementById('resultContainer');
         const isApk = type === 'apk';
-        const color = isApk ? 'var(--neon-red)' : 'var(--neon-cyan)';
 
-        // Giao diện Loading xịn xò kết hợp Radar và Terminal Log
+        // Màn hình chạy: terminal luôn tối. Với APK, nhật ký là nhật ký thật của máy chủ (/api/scan-log).
         resultDiv.innerHTML = `
-            <div class="terminal w-100 h-100 p-4 rounded-3 d-flex flex-column">
-                <div class="d-flex justify-content-between border-bottom border-secondary pb-2 mb-4">
-                    <span style="color: ${color}; font-weight: bold;"><i class="fas fa-terminal me-2"></i> DroidGuard Core Execution</span>
-                    <span class="text-warning fw-bold" id="scanPercentage">0%</span>
+            <div class="terminal w-100 p-4 d-flex flex-column" style="min-height: 440px;">
+                <div class="run-head">
+                    <span class="text-white fw-semibold"><i class="fas fa-circle-notch fa-spin me-2" style="color: var(--accent);"></i>Đang phân tích ${isApk ? 'APK' : 'CSV'}</span>
+                    <span class="text-warning fw-semibold" id="scanElapsed">0 giây</span>
                 </div>
-                
-                <div class="d-flex align-items-center mb-4 p-3 rounded-3" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.05);">
-                    <div class="radar me-4" style="width: 70px; height: 70px; margin: 0; border-color: ${color}; box-shadow: 0 0 15px ${color};"></div>
-                    <div class="flex-grow-1">
-                        <h5 class="text-white mb-2 fw-bold" style="letter-spacing: 1px;">PHÂN TÍCH VECTOR ĐANG CHẠY...</h5>
-                        <div class="progress" style="height: 6px; background: #222; >border-radius: 10px;"
-                            <div id="scanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%; background-color: ${color};"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="scanLog" class="flex-grow-1 p-3 rounded-3" style="background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); overflow-y: auto; max-height: 300px;">
-                    <div class="mb-1"><span class="text-light" style="opacity:0.6;">[SYSTEM]</span> Khởi tạo luồng quét cho mục tiêu: <strong class="text-white">${file.name}</strong></div>
+                <div class="run-bar is-busy mb-3"><div></div></div>
+                <div id="scanLog" class="flex-grow-1" style="overflow-y: auto; max-height: 340px;">
+                    <div class="mb-1"><span class="text-light">[SYSTEM]</span> Bắt đầu quét: <strong class="text-white">${escapeHtml(file.name)}</strong></div>
                 </div>
             </div>
         `;
 
-        const progressBar = document.getElementById('scanProgressBar');
-        const pctText = document.getElementById('scanPercentage');
         const log = document.getElementById('scanLog');
+        const elapsedEl = document.getElementById('scanElapsed');
+        const LIVE_COLORS = { SUCCESS: '#4ade80', WARN: '#facc15', ERROR: '#f87171', INFO: '#94a3b8' };
 
-        function addLog(text, isError=false) {
+        function addLog(text) {
             const time = new Date().toLocaleTimeString('en-US', {hour12: false});
-            log.innerHTML += `<div class="mb-1"><span class="text-light" style="opacity:0.6;">[${time}]</span> <span style="color: ${isError ? 'var(--neon-red)' : 'inherit'}">${text}</span></div>`;
+            log.innerHTML += `<div class="mb-1"><span class="text-light">[${time}]</span> ${escapeHtml(text)}</div>`;
             log.scrollTop = log.scrollHeight;
         }
 
-        function setProgress(val, text) {
-            progressBar.style.width = val + "%";
-            pctText.innerText = val + "%";
-            if (text) addLog(text);
+        const startedAt = Date.now();
+        const clock = setInterval(() => {
+            if (elapsedEl) elapsedEl.textContent = Math.round((Date.now() - startedAt) / 1000) + ' giây';
+        }, 1000);
+
+        // Chỉ hiện nhật ký sau khi dòng "BẮT ĐẦU PHÂN TÍCH" của đúng file này xuất hiện,
+        // để không lẫn nhật ký của lần quét trước.
+        let sawStart = false;
+        async function pollLive() {
+            if (!isApk) return;
+            try {
+                const r = await fetch('/api/scan-log');
+                const d = await r.json();
+                const lines = d.lines || [];
+                if (!sawStart) sawStart = lines.some(l => l.includes(file.name));
+                if (!sawStart || !log) return;
+                log.innerHTML = lines.map(line => {
+                    let color = '#8fe0b0';
+                    for (const [key, c] of Object.entries(LIVE_COLORS)) {
+                        if (line.includes(`[${key}]`)) { color = c; break; }
+                    }
+                    return `<div style="color:${color};margin-bottom:2px;">${escapeHtml(line)}</div>`;
+                }).join('');
+                log.scrollTop = log.scrollHeight;
+            } catch (e) { /* bỏ qua lỗi mạng tạm thời */ }
         }
+        const livePoll = setInterval(pollLive, 700);
 
         const formData = new FormData();
         formData.append('file', file);
 
         try {
-            setProgress(5, "Initializing AI Core components...");
-            setProgress(15, "Uploading payload to isolated environment...");
-            
-            // Bắt đầu gọi API
+            addLog('Đang tải file lên máy chủ…');
+
             const res = await fetch(endpoint, { method: 'POST', body: formData });
-            
-            setProgress(40, "Extracting dynamic & static features...");
-            setProgress(65, "Engaging Machine Learning models...");
-            setProgress(85, "Cross-referencing behavioral signatures...");
-            
             const data = await res.json();
 
             // Kiểm tra lỗi từ server
             if (!res.ok || data.success === false) {
-                setProgress(100, "❌ Phân tích thất bại!", true);
                 const resultDiv = document.getElementById('resultContainer');
                 resultDiv.innerHTML = `
-                    <div class="p-4 rounded-3 m-3" style="background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.4);">
-                        <h5 class="text-danger"><i class="fas fa-triangle-exclamation me-2"></i>Phân Tích Thất Bại</h5>
-                        <p class="text-light mb-2">${escapeHtml(data.error || 'Lỗi không xác định từ server')}</p>
-                        <p class="text-muted small">Kiểm tra Session Log bên dưới hoặc <code>web/error_crash.log</code> để biết chi tiết.</p>
+                    <div class="callout callout--danger">
+                        <h3 class="panel-title text-danger"><i class="fas fa-triangle-exclamation me-2"></i>Phân tích thất bại</h3>
+                        <p class="mb-2">${escapeHtml(data.error || 'Lỗi không xác định từ máy chủ')}</p>
+                        <p class="text-muted small mb-0">Xem chi tiết trong <code>web/error_crash.log</code> trên máy chạy Flask.</p>
                     </div>`;
-                startLogPolling();
                 return;
             }
 
-            setProgress(100, "Scan completed ✔. Formatting report...");
             saveToHistory(data, type);
             if (data.task_id) window._currentTaskId = data.task_id;
 
-            setTimeout(() => {
-                if(type === 'csv') displayCsvResult(data);
-                else displayApkResult(data);
-            }, 800); // Đợi xíu cho có cảm giác thật
+            if (type === 'csv') displayCsvResult(data);
+            else displayApkResult(data);
 
         } catch (err) {
-            addLog("❌ ERROR: " + err.message, true);
             const resultDiv = document.getElementById('resultContainer');
             resultDiv.innerHTML = `
-                <div class="p-4 rounded-3 m-3" style="background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.4);">
-                    <h5 class="text-danger"><i class="fas fa-triangle-exclamation me-2"></i>Lỗi Kết Nối</h5>
-                    <p class="text-light mb-2">${escapeHtml(err.message)}</p>
-                    <p class="text-muted small">Kiểm tra xem server Flask có đang chạy không.</p>
+                <div class="callout callout--danger">
+                    <h3 class="panel-title text-danger"><i class="fas fa-triangle-exclamation me-2"></i>Không kết nối được máy chủ</h3>
+                    <p class="mb-2">${escapeHtml(err.message)}</p>
+                    <p class="text-muted small mb-0">Kiểm tra xem Flask còn đang chạy không rồi thử lại.</p>
                 </div>`;
+        } finally {
+            clearInterval(clock);
+            clearInterval(livePoll);
         }
     }
 
@@ -258,59 +267,49 @@ document.addEventListener('DOMContentLoaded', function() {
         const first = data.first_sample;
         const stats = data.statistics;
 
-        let alertClass = 'success';
-        if (first.risk_level === 'Rất cao' || first.risk_level === 'Cao') alertClass = 'danger';
-        else if (first.risk_level === 'Trung bình') alertClass = 'warning';
+        let tone = 'safe';
+        if (first.risk_level === 'Rất cao' || first.risk_level === 'Cao') tone = 'danger';
+        else if (first.risk_level === 'Trung bình') tone = 'caution';
 
         const classNames = { '1': '🟢 Benign', '2': '📢 Adware', '3': '🏦 Banking', '4': '💬 SMS Malware', '5': '⚠️ Riskware' };
 
         let statsHtml = '';
         for (const [key, value] of Object.entries(stats)) {
             statsHtml += `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-                    <td class="text-light fw-bold">${classNames[key] || key}</td>
-                    <td class="text-center"><span class="badge" style="background: rgba(0,243,255,0.2); color: var(--neon-cyan);">${value.count}</span></td>
-                    <td class="text-center"><span class="badge bg-secondary">${value.percentage}%</span></td>
+                <tr>
+                    <td class="fw-semibold">${classNames[key] || key}</td>
+                    <td class="text-center"><span class="chip">${value.count}</span></td>
+                    <td class="text-center"><span class="chip">${value.percentage}%</span></td>
                 </tr>
             `;
         }
 
         const html = `
-        <h4 style="color: var(--neon-cyan);" class="mb-4 fw-bold"><i class="fas fa-list-alt me-2"></i> Batch Analysis Report</h4>
-        <div class="p-3 rounded-3 mb-4" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
-            <h5 class="text-white"><i class="fas fa-file-csv text-info me-2"></i> Dataset: <span class="text-info">${escapeHtml(data.filename)}</span></h5>
-            <p class="text-light mb-0 fs-5" style="opacity:0.8;"><i class="fas fa-chart-simple me-2"></i> Tổng số mẫu phân tích: <strong>${data.total_samples}</strong></p>
+        <h2 class="panel-title mb-3">Báo cáo phân loại hàng loạt</h2>
+        <div class="callout mb-3">
+            <div><strong>Tập dữ liệu:</strong> ${escapeHtml(data.filename)}</div>
+            <div><strong>Tổng số mẫu phân tích:</strong> ${data.total_samples}</div>
         </div>
 
-        <div class="alert bg-dark border-${alertClass} text-center py-4 text-white shadow-lg ${alertClass === 'danger' ? 'danger-blink' : ''}">
-            <div style="font-size: 64px; text-shadow: 0 0 15px currentColor;">${first.icon}</div>
-            <h3 class="mt-2 fw-bold text-white">${first.name}</h3>
-            <hr style="border-top: 1px solid rgba(255,255,255,0.2)">
-            <div class="row">
-                <div class="col-6">
-                    <strong class="text-light text-uppercase" style="opacity:0.7;">🎯 Độ tin cậy</strong><br>
-                    <span class="fs-2 fw-bold text-white">${first.confidence}%</span>
-                </div>
-                <div class="col-6">
-                    <strong class="text-light text-uppercase" style="opacity:0.7;">⚠️ Mức độ rủi ro</strong><br>
-                    <span class="fs-4 fw-bold text-${alertClass}">${first.risk_level}</span>
-                </div>
+        <section class="verdict verdict--${tone} mb-4" style="grid-template-columns: 1fr;">
+            <div class="verdict-main">
+                <div class="verdict-icon">${first.icon}</div>
+                <div class="verdict-name">${first.name}</div>
+                <dl class="verdict-meter mb-0">
+                    <div><dt>Độ tin cậy (mẫu đầu tiên)</dt><dd>${first.confidence}%</dd></div>
+                    <div><dt>Mức rủi ro</dt><dd class="risk">${first.risk_level}</dd></div>
+                </dl>
             </div>
-        </div>
+        </section>
 
-        <h5 class="mt-4 text-white"><i class="fas fa-chart-pie me-2"></i> Phân bổ thống kê:</h5>
+        <h3 class="panel-title">Phân bố theo nhóm</h3>
         <div class="table-responsive">
-            <table class="table table-borderless">
-                <thead style="background: rgba(255,255,255,0.1); color: white;">
-                    <tr><th>Phân lớp mã độc</th><th class="text-center">Số lượng</th><th class="text-center">Tỷ lệ</th></tr>
-                </thead>
+            <table class="table align-middle">
+                <thead><tr><th>Nhóm</th><th class="text-center">Số lượng</th><th class="text-center">Tỷ lệ</th></tr></thead>
                 <tbody>${statsHtml}</tbody>
             </table>
         </div>
-        <div class="p-3 rounded-3 mt-3" style="background: rgba(0,243,255,0.05); border-left: 4px solid var(--neon-cyan);">
-            <strong class="text-info"><i class="fas fa-lightbulb"></i> Khuyến nghị hệ thống:</strong><br>
-            <span class="text-white">${getRecommendation(first.class)}</span>
-        </div>
+        <div class="callout mt-3"><strong><i class="fas fa-lightbulb me-1"></i> Khuyến nghị:</strong> ${getRecommendation(first.class)}</div>
         `;
         resultDiv.innerHTML = html;
     }
@@ -332,67 +331,59 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let notesHtml = '';
         if (data.notes && data.notes.length > 0) {
-            notesHtml = `<div class="p-3 rounded-3 mt-3" style="background: rgba(250,204,21,0.08); border-left: 4px solid #facc15;">
-                <strong style="color:#facc15;"><i class="fas fa-triangle-exclamation me-1"></i> Ghi chú:</strong>
-                <ul class="mb-0 mt-1 text-white small">${data.notes.map(n => `<li>${escapeHtml(String(n))}</li>`).join('')}</ul>
+            notesHtml = `<div class="callout callout--caution">
+                <strong><i class="fas fa-triangle-exclamation me-1"></i> Ghi chú</strong>
+                <ul class="mb-0 mt-1 small">${data.notes.map(n => `<li>${escapeHtml(String(n))}</li>`).join('')}</ul>
                 ${incomplete && data.incomplete_reasons && data.incomplete_reasons.length
-                    ? `<div class="text-light small mt-2" style="opacity:0.7;">Chi tiết: ${data.incomplete_reasons.map(r => escapeHtml(String(r))).join(' | ')}</div>`
+                    ? `<div class="small text-muted mt-2">Chi tiết: ${data.incomplete_reasons.map(r => escapeHtml(String(r))).join(' | ')}</div>`
                     : ''}
             </div>`;
         }
 
         let dangerousHtml = '';
         if (data.dangerous_permissions && data.dangerous_permissions.length > 0) {
+            const perms = data.dangerous_permissions;
             dangerousHtml = `
-                <h6 class="mt-3 text-danger fw-bold"><i class="fas fa-shield-alt"></i> Quyền truy cập rủi ro (${data.dangerous_count || data.dangerous_permissions.length}):</h6>
-                <ul class="list-group list-group-flush mb-3 rounded" style="background: rgba(255,23,68,0.1);">
-                    ${data.dangerous_permissions.slice(0, 10).map(p => `<li class="list-group-item bg-transparent text-white border-0">🔴 ${p}</li>`).join('')}
-                    ${data.dangerous_permissions.length > 10 ? `<li class="list-group-item bg-transparent text-light border-0" style="opacity:0.7;">... và ${data.dangerous_permissions.length - 10} quyền khác</li>` : ''}
-                </ul>
-            `;
+                <div>
+                    <h3 class="panel-title text-danger"><i class="fas fa-shield-halved me-2"></i>Quyền truy cập rủi ro (${data.dangerous_count || perms.length})</h3>
+                    <div class="d-flex flex-wrap gap-2">
+                        ${perms.slice(0, 10).map(p => `<span class="chip chip--danger" title="${escapeHtml(p)}">${escapeHtml(String(p).split('.').pop())}</span>`).join('')}
+                        ${perms.length > 10 ? `<span class="chip">+${perms.length - 10} quyền khác</span>` : ''}
+                    </div>
+                </div>`;
         } else {
-            dangerousHtml = '<p class="text-success mt-3"><i class="fas fa-check-circle me-1"></i> Hệ thống không phát hiện quyền truy cập nguy hiểm.</p>';
+            dangerousHtml = '<div class="callout callout--safe"><i class="fas fa-circle-check me-1"></i> Không phát hiện quyền truy cập nguy hiểm.</div>';
         }
 
-        let html = `
-            <div class="row text-center mb-4">
-                <div class="col-md-6 mb-3">
-                    <div class="p-4 rounded-3 h-100 ${isDanger ? 'danger-blink' : ''}" style="background: rgba(0,0,0,0.4); border: 1px solid ${colorClass};">
-                        <div style="font-size: 64px; text-shadow: 0 0 15px ${colorClass};">${data.icon || '🤖'}</div>
-                        <h3 class="text-white mt-3 fw-bold">${data.name || data.display_name || 'Kết quả'}</h3>
-                        <div class="d-flex justify-content-around mt-3 border-top border-secondary pt-3">
-                            <div>
-                                <small class="text-light d-block text-uppercase" style="opacity:0.7;">Độ tin cậy AI</small>
-                                <strong class="fs-4 text-white">${confText}</strong>
-                            </div>
-                            <div>
-                                <small class="text-light d-block text-uppercase" style="opacity:0.7;">Mức rủi ro</small>
-                                <strong class="fs-4" style="color:${colorClass};">${data.risk_level || 'N/A'}</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6 mb-3 text-start">
-                    <div class="p-4 h-100 rounded-3" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
-                        <p class="mb-3"><i class="fas fa-file text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">File Target:</strong> <span class="text-white">${escapeHtml(data.filename || 'File')}</span></p>
-                        <p class="mb-3"><i class="fas fa-box text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Package ID:</strong> <code class="text-info fs-6">${escapeHtml(data.package_name || 'N/A')}</code></p>
-                        <p class="mb-3"><i class="fas fa-tag text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Tên App:</strong> <span class="text-white">${escapeHtml(data.app_name || 'Không xác định')}</span></p>
-                        <p class="mb-3"><i class="fas fa-code-branch text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Version:</strong> <span class="text-white">${escapeHtml(data.version || 'N/A')}</span></p>
-                        <p class="mb-3"><i class="fas fa-file-code text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Nguồn đọc Manifest:</strong> <code class="text-info">${escapeHtml(data.manifest_source || 'N/A')}</code></p>
-                        <p class="mb-3"><i class="fas fa-user-secret text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Manifest bị làm méo:</strong> ${flagBadge(data.manifest_tampered)}</p>
-                        <p class="mb-0"><i class="fas fa-file-zipper text-light me-2" style="opacity:0.6;"></i> <strong class="text-light" style="opacity:0.8;">Cấu trúc ZIP bị làm méo:</strong> ${flagBadge(data.zip_tampered)}</p>
-                    </div>
-                </div>
-            </div>
+        const tone = incomplete ? 'caution' : (isDanger ? 'danger' : 'safe');
+        const fact = (label, value, cls = '') => `<div class="${cls}"><dt>${label}</dt><dd>${value}</dd></div>`;
 
-            <div class="px-3">
+        let html = `
+            <section class="verdict verdict--${tone} mb-4">
+                <div class="verdict-main">
+                    <div class="verdict-icon">${data.icon || '🤖'}</div>
+                    <div class="verdict-name">${data.name || data.display_name || 'Kết quả'}</div>
+                    <dl class="verdict-meter mb-0">
+                        <div><dt>Độ tin cậy</dt><dd>${confText}</dd></div>
+                        <div><dt>Mức rủi ro</dt><dd class="risk">${data.risk_level || 'N/A'}</dd></div>
+                    </dl>
+                </div>
+                <dl class="facts">
+                    ${fact('File', escapeHtml(data.filename || 'File'), 'wide')}
+                    ${fact('Package', `<code>${escapeHtml(data.package_name || 'N/A')}</code>`)}
+                    ${fact('Tên ứng dụng', escapeHtml(data.app_name || 'Không xác định'))}
+                    ${fact('Phiên bản', escapeHtml(data.version || 'N/A'))}
+                    ${fact('Nguồn đọc manifest', `<code>${escapeHtml(data.manifest_source || 'N/A')}</code>`)}
+                    ${fact('Manifest bị làm méo', flagBadge(data.manifest_tampered))}
+                    ${fact('Cấu trúc ZIP bị làm méo', flagBadge(data.zip_tampered))}
+                </dl>
+            </section>
+
+            <div class="d-flex flex-column gap-3">
                 ${notesHtml}
                 ${dangerousHtml}
-                <div class="p-3 rounded-3 mt-3" style="background: rgba(0,243,255,0.05); border-left: 4px solid var(--neon-cyan);">
-                    <strong class="text-info"><i class="fas fa-lightbulb"></i> Khuyến nghị hệ thống:</strong><br>
-                    <span class="text-white">${getRecommendation(data.class_name || data.class)}</span>
-                </div>
-                ${data.mobsf_link ? `<div class="mt-4"><a href="${data.mobsf_link}" target="_blank" class="btn btn-outline-info w-100 py-3 rounded-pill fw-bold" style="border-width: 2px;"><i class="fas fa-search-plus me-2"></i> TRUY CẬP BÁO CÁO CHUYÊN Sâu (MobSF)</a></div>` : ''}
+                <div class="callout"><strong><i class="fas fa-lightbulb me-1"></i> Khuyến nghị:</strong> ${getRecommendation(data.class_name || data.class)}</div>
+                ${data.mobsf_link ? `<a href="${escapeHtml(data.mobsf_link)}" target="_blank" rel="noopener" class="btn btn-outline-info w-100 py-2"><i class="fas fa-arrow-up-right-from-square me-2"></i>Mở báo cáo chuyên sâu trên MobSF</a>` : ''}
             </div>
         `;
 
@@ -632,18 +623,18 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             const ctx = document.getElementById('probabilityChart').getContext('2d');
             if (window.malwareChart) { window.malwareChart.destroy(); }
-            Chart.defaults.color = '#e2e8f0'; 
+            Chart.defaults.color = chartTheme().text;
             window.malwareChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: ['An toàn', 'Quảng cáo', 'Ngân hàng', 'Tin nhắn', 'Rủi ro'],
                     datasets: [{
                         data: [data.all_probabilities.Benign, data.all_probabilities.Adware, data.all_probabilities.Banking, data.all_probabilities.SMS, data.all_probabilities.Riskware],
-                        backgroundColor: ['#00e676', '#ffd600', '#b388ff', '#ff1744', '#ff9100'],
-                        borderWidth: 0, hoverOffset: 5
+                        backgroundColor: chartTheme().classes,
+                        borderColor: chartTheme().surface, borderWidth: 3, hoverOffset: 5
                     }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc' } } } }
+                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { position: 'bottom', labels: { color: chartTheme().text, usePointStyle: true } } } }
             });
         }
 
@@ -1079,6 +1070,16 @@ window.exportToPDF = function() {
         const recs = { '1': '✅ Ứng dụng an toàn. Có thể tiếp tục sử dụng.', '2': '⚠️ Ứng dụng chứa quảng cáo độc hại. Cân nhắc gỡ cài đặt.', '3': '🔴 NGUY HIỂM! Gỡ cài đặt NGAY. Vui lòng đổi mật khẩu ngân hàng của bạn!', '4': '🔴 NGUY HIỂM! Gỡ cài đặt NGAY. Kiểm tra sao kê cước phí điện thoại!', '5': '⚠️ Phát hiện rủi ro tiềm ẩn. Thận trọng khi cấp quyền cho ứng dụng.' };
         return recs[classId] || 'Yêu cầu phân tích chuyên sâu.';
     }
+
+    // Đổi chủ đề sáng/tối: cập nhật màu biểu đồ đang hiển thị
+    window.addEventListener('themechange', function () {
+        if (!window.malwareChart) return;
+        const t = chartTheme();
+        window.malwareChart.data.datasets[0].backgroundColor = t.classes;
+        window.malwareChart.data.datasets[0].borderColor = t.surface;
+        window.malwareChart.options.plugins.legend.labels.color = t.text;
+        window.malwareChart.update();
+    });
 
     function escapeHtml(str) { return str == null ? '' : String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
