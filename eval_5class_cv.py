@@ -23,7 +23,7 @@ if len(ok) < 3:
 df = df[df.label.isin(ok)]
 le = LabelEncoder()
 y = le.fit_transform(df.label)
-X = df[FEATURE_SCHEMA].fillna(0).astype(float).values
+X = df[[c for c in FEATURE_SCHEMA if c not in ("min_sdk", "target_sdk")]].fillna(0).astype(float).values
 k = int(min(5, df.label.value_counts().min()))
 cv = RepeatedStratifiedKFold(n_splits=k, n_repeats=3, random_state=42)
 
