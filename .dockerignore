@@ -13,3 +13,12 @@ __pycache__
 dataset
 TEST
 scans
+
+# Bo sung: mau o thu muc con ('*.apk' chi khop o goc) + thu muc mau ma doc
+malware_zip
+**/*.apk
+**/*.zip
+**/*.exe
+**/*.log
+**/__pycache__
+**/*.pyc
