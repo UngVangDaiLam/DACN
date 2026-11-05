@@ -1,18 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Scanner - DroidGuard AI{% endblock %}
+{% block title %}Scanner - AndroWall{% endblock %}
 
 {% block content %}
 <header class="page-head">
     <div>
-        <h1>Quét mẫu</h1>
+        <span class="eyebrow">PHÂN TÍCH ỨNG DỤNG</span><h1>Quét mẫu</h1>
         <p>Nạp file APK để phân tích, hoặc file CSV đặc trưng để phân loại hàng loạt.</p>
     </div>
 </header>
 
-<div class="row g-4">
+<div class="row g-4 scan-workspace">
     <!-- Cột nạp mẫu -->
     <div class="col-xl-4 col-lg-5">
         <section class="panel panel-pad">
+            <div class="scan-card-heading"><span class="section-number">01</span><h2>Chọn mẫu</h2></div>
             <div class="seg mb-3" role="tablist" aria-label="Loại mẫu">
                 <button type="button" role="tab" id="tabApk" aria-selected="true" aria-controls="apkForm">APK</button>
                 <button type="button" role="tab" id="tabCsv" aria-selected="false" aria-controls="csvForm">CSV hàng loạt</button>
@@ -20,7 +21,7 @@
 
             <form id="apkForm" role="tabpanel" aria-labelledby="tabApk">
                 <label class="dropzone" id="apkDrop">
-                    <i class="fas fa-mobile-screen dropzone-icon"></i>
+                    <span class="upload-symbol"><i class="fas fa-arrow-up-from-bracket"></i></span>
                     <strong>Kéo file APK vào đây</strong>
                     <span class="hint">hoặc bấm để chọn file, tối đa 500 MB</span>
                     <span class="picked" id="apkPicked" hidden></span>
@@ -34,7 +35,7 @@
 
             <form id="csvForm" role="tabpanel" aria-labelledby="tabCsv" hidden>
                 <label class="dropzone" id="csvDrop">
-                    <i class="fas fa-file-csv dropzone-icon"></i>
+                    <span class="upload-symbol"><i class="fas fa-file-csv"></i></span>
                     <strong>Kéo file CSV vào đây</strong>
                     <span class="hint">hoặc bấm để chọn file</span>
                     <span class="picked" id="csvPicked" hidden></span>
@@ -50,12 +51,13 @@
 
     <!-- Cột kết quả -->
     <div class="col-xl-8 col-lg-7">
-        <section class="panel h-100" style="min-height: 520px;">
-            <div class="p-4 d-flex flex-column h-100" id="resultContainer">
+        <section class="panel h-100 d-flex flex-column" style="min-height: 560px;">
+            <div class="scan-result-heading"><span class="section-number">02</span><h2>Kết quả phân tích</h2><span class="chip">Bằng chứng &amp; đánh giá</span></div>
+            <div class="p-4 d-flex flex-column flex-grow-1" id="resultContainer" aria-live="polite" aria-atomic="false">
                 <div class="text-center m-auto" style="max-width: 36ch;">
-                    <i class="fas fa-magnifying-glass-chart fa-2x mb-3 text-muted"></i>
-                    <h2 class="panel-title">Chưa có mẫu nào</h2>
-                    <p class="text-muted mb-0">Chọn một file ở khung bên trái. Kết quả và nhật ký từng bước sẽ hiện ở đây.</p>
+                    <span class="result-empty-symbol"><i class="fas fa-fingerprint"></i></span>
+                    <h2 class="panel-title">Chờ mẫu phân tích</h2>
+                    <p class="text-muted mb-0">Tải file lên để xem kết luận, mức rủi ro và bằng chứng. Nhật ký sẽ hiển thị khi quá trình bắt đầu.</p>
                 </div>
             </div>
         </section>
@@ -75,6 +77,15 @@
     }
     document.getElementById('tabApk').addEventListener('click', function () { show('apk'); });
     document.getElementById('tabCsv').addEventListener('click', function () { show('csv'); });
+    ['tabApk', 'tabCsv'].forEach(function (id) {
+        document.getElementById(id).addEventListener('keydown', function (event) {
+            var next;
+            if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = id === 'tabApk' ? 'csv' : 'apk';
+            if (event.key === 'Home') next = 'apk';
+            if (event.key === 'End') next = 'csv';
+            if (next) { event.preventDefault(); show(next); document.getElementById(panes[next][0]).focus(); }
+        });
+    });
 
     [['apkDrop', 'apkFile', 'apkPicked'], ['csvDrop', 'csvFile', 'csvPicked']].forEach(function (ids) {
         var zone = document.getElementById(ids[0]);
@@ -1005,7 +1016,7 @@ window.exportToPDF = function() {
 
     // Footer
     const footer = `<div style="text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;">
-      DroidGuard AI Core System &bull; Báo cáo tự động &bull; ${new Date().toLocaleString('vi-VN')}
+      AndroWall Core System &bull; Báo cáo tự động &bull; ${new Date().toLocaleString('vi-VN')}
     </div>`;
 
     // ── Tạo DOM element thật để html2canvas render được ──────────────────────
@@ -1021,7 +1032,7 @@ window.exportToPDF = function() {
     wrapper.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0284c7;padding-bottom:14px;margin-bottom:20px;">
         <div>
-          <div style="font-size:20px;font-weight:bold;color:#0f172a;">🛡️ DroidGuard AI — Báo Cáo Phân Tích</div>
+          <div style="font-size:20px;font-weight:bold;color:#0f172a;">🛡️ AndroWall — Báo Cáo Phân Tích</div>
           <div style="font-size:11px;color:#64748b;margin-top:4px;">Thời gian: ${new Date().toLocaleString('vi-VN')}</div>
         </div>
         <div style="text-align:right;font-size:11px;color:#64748b;">

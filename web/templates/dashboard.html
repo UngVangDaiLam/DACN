@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Thống kê · DroidGuard AI{% endblock %}
+{% block title %}Thống kê · AndroWall{% endblock %}
 
 {% block content %}
 <header class="page-head">
     <div>
-        <h1>Thống kê quét</h1>
-        <p>Tổng hợp từ lịch sử quét lưu trong trình duyệt này.</p>
+        <span class="eyebrow">DỮ LIỆU PHÂN TÍCH</span><h1>Thống kê quét</h1>
+        <p>Tổng hợp từ lịch sử quét lưu trong trình duyệt này. Tỷ lệ chỉ tính mẫu có nhãn phân loại.</p>
     </div>
     <button class="btn btn-ghost px-3" onclick="refreshDash()"><i class="fas fa-rotate me-2"></i>Làm mới</button>
 </header>
@@ -20,8 +20,8 @@
         <div class="stat-value" id="dash-total-samples">0</div>
     </div>
     <div class="stat">
-        <div class="stat-label">Tỷ lệ mẫu bị nhận diện là mã độc</div>
-        <div class="stat-value is-danger"><span id="dash-detection-rate">0</span>%</div>
+        <div class="stat-label">Mẫu được phân loại ngoài Benign</div>
+        <div class="stat-value is-danger"><span id="dash-detection-rate">—</span></div>
     </div>
 </section>
 
@@ -116,16 +116,26 @@
 
     window.refreshDash = function() {
         const history = getHistory();
-        let totalScans = history.length, totalSamples = 0, malwareSamples = 0;
-
+        let totalScans = history.length, totalSamples = 0, classifiedSamples = 0, nonBenignSamples = 0;
         history.forEach(h => {
-            totalSamples += (h.total_samples || 1);
-            if (h.first_sample && h.first_sample.class !== '1') malwareSamples += (h.total_samples || 1);
+            const total = Number(h.total_samples);
+            totalSamples += Number.isFinite(total) && total >= 0 ? total : 1;
+            if (h.statistics) {
+                ['1', '2', '3', '4', '5'].forEach(key => {
+                    const count = Number(h.statistics[key]?.count || 0);
+                    if (Number.isFinite(count) && count > 0) {
+                        classifiedSamples += count;
+                        if (key !== '1') nonBenignSamples += count;
+                    }
+                });
+            } else if (total === 1 && ['1', '2', '3', '4', '5'].includes(String(h.first_sample?.class))) {
+                classifiedSamples++;
+                if (String(h.first_sample.class) !== '1') nonBenignSamples++;
+            }
         });
-
         document.getElementById('dash-total-scans').innerText = totalScans;
         document.getElementById('dash-total-samples').innerText = totalSamples;
-        document.getElementById('dash-detection-rate').innerText = totalSamples > 0 ? Math.round((malwareSamples / totalSamples) * 100) : 0;
+        document.getElementById('dash-detection-rate').innerText = classifiedSamples > 0 ? Math.round(nonBenignSamples / classifiedSamples * 100) + '%' : '—';
 
         drawCharts(history);
         renderHistoryTable(history);
