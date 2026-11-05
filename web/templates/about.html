@@ -1,53 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Giới thiệu · DroidGuard AI{% endblock %}
-
+{% block title %}Giới thiệu · AndroWall{% endblock %}
 {% block content %}
-<header class="page-head">
-    <div>
-        <h1>Giới thiệu hệ thống</h1>
-        <p>Kiến trúc, dữ liệu huấn luyện và kết quả đạt được.</p>
-    </div>
-    <a href="/scan" class="btn btn-cyber btn-cta"><span>Quét mẫu</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span></a>
-</header>
-
+<header class="page-head"><div><span class="eyebrow">VỀ HỆ THỐNG</span><h1>Đọc bằng chứng, hiểu giới hạn</h1><p>AndroWall hỗ trợ đánh giá rủi ro của ứng dụng Android.</p></div><a href="/scan" class="btn btn-cyber btn-cta"><span>Phân tích mẫu</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span></a></header>
 <div class="row g-4">
-    <div class="col-lg-7">
-        <section class="panel panel-pad mb-4">
-            <h2 class="panel-title">Lõi hệ thống</h2>
-            <p class="mb-0 text-light">
-                Hệ thống phát hiện và phân loại mã độc Android bằng học máy (Random Forest và XGBoost),
-                đạt độ chính xác <strong>94.4%</strong>.
-            </p>
-        </section>
-
-        <section class="panel panel-pad">
-            <h2 class="panel-title">Dữ liệu huấn luyện</h2>
-            <p class="text-light">Khởi tạo từ bộ dữ liệu <strong>CICMalDroid 2020</strong> của Viện An ninh mạng Canada (CIC).</p>
-            <ul class="list-group list-group-flush mb-0">
-                <li class="list-group-item px-0"><i class="fas fa-check text-success me-2"></i>11,598 ứng dụng đã dán nhãn</li>
-                <li class="list-group-item px-0"><i class="fas fa-check text-success me-2"></i>470 vector đặc trưng (API call, Intent, Permission)</li>
-                <li class="list-group-item px-0 border-0"><i class="fas fa-check text-success me-2"></i>Phân loại đa lớp: Benign, Adware, Banking, SMS, Riskware</li>
-            </ul>
-        </section>
-    </div>
-
-    <div class="col-lg-5">
-        <section class="panel">
-            <div class="stats" style="grid-template-columns: 1fr; border: 0; background: transparent;">
-                <div class="stat">
-                    <div class="stat-label">Độ chính xác (accuracy)</div>
-                    <div class="stat-value">94.4%</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Số nhóm phân loại</div>
-                    <div class="stat-value">5</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Mẫu huấn luyện</div>
-                    <div class="stat-value">11.5K</div>
-                </div>
-            </div>
-        </section>
-    </div>
+    <div class="col-lg-7"><section class="panel panel-pad h-100"><h2 class="panel-title">Một kết luận cần nhiều góc nhìn</h2><p class="text-muted mt-3">Hệ thống kết hợp kết quả học máy với các dấu hiệu trong cấu trúc APK, quyền truy cập, chữ ký số và mã DEX. Báo cáo trình bày bằng chứng để người phân tích có thể kiểm tra lại.</p><ol class="steps mt-4"><li><h3>Phân tích APK</h3><p>Đọc đặc trưng tĩnh và các dấu hiệu mà bộ luật hiện tại hỗ trợ.</p></li><li><h3>Phân loại CSV</h3><p>Dành cho dữ liệu đã trích đặc trưng theo đúng schema của mô hình. CSV và APK là hai luồng đầu vào khác nhau.</p></li><li><h3>Đối chiếu MobSF</h3><p>Chỉ có khi dịch vụ được cấu hình và trả báo cáo. Thiếu báo cáo không đồng nghĩa ứng dụng an toàn.</p></li></ol></section></div>
+    <div class="col-lg-5"><section class="panel panel-pad h-100"><span class="eyebrow">LƯU Ý KHI SỬ DỤNG</span><h2 class="panel-title">Điểm số không phải sự đảm bảo</h2><p class="text-muted mt-3">Độ tin cậy là đầu ra của mô hình cho một mẫu; nó không phải độ chính xác thực tế của toàn hệ thống.</p><p class="text-muted">Kết quả phụ thuộc vào dữ liệu huấn luyện, mức tương thích đặc trưng và khả năng trích xuất. Cần đọc phần cảnh báo và giới hạn trong từng báo cáo.</p><div class="callout mt-4"><strong>Về số liệu đánh giá</strong><p class="small mb-0 mt-1">Giao diện không công bố một mức accuracy cố định khi chưa gắn với phiên bản mô hình, tập kiểm thử và số mẫu thực tế.</p></div></section></div>
 </div>
+<section class="panel panel-pad mt-4"><h2 class="panel-title">Các nhóm kết quả hiện có</h2><p class="panel-note">Đây là các nhãn phân loại, không phải tên họ mã độc được xác minh.</p><ul class="legend"><li style="--sw:var(--c-benign)"><span class="swatch"></span><strong>Benign</strong><span>Được mô hình xếp vào nhóm lành tính; vẫn cần đối chiếu các cảnh báo.</span></li><li style="--sw:var(--c-adware)"><span class="swatch"></span><strong>Adware</strong><span>Nhóm ứng dụng quảng cáo gây phiền hoặc tiềm ẩn rủi ro.</span></li><li style="--sw:var(--c-banking)"><span class="swatch"></span><strong>Banking</strong><span>Nhóm mã độc nhắm đến thông tin và hoạt động ngân hàng.</span></li><li style="--sw:var(--c-sms)"><span class="swatch"></span><strong>SMS</strong><span>Nhóm mã độc liên quan đến đọc, gửi hoặc chặn tin nhắn.</span></li><li style="--sw:var(--c-riskware)"><span class="swatch"></span><strong>Riskware</strong><span>Nhóm ứng dụng có chức năng có thể bị lạm dụng hoặc gây rủi ro.</span></li></ul></section>
 {% endblock %}

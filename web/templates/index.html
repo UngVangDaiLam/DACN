@@ -1,59 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Trang chủ · DroidGuard AI{% endblock %}
-
+{% block title %}Tổng quan · AndroWall{% endblock %}
 {% block content %}
-<section class="hero">
-    <div>
-        <h1>Biết một file APK có đáng ngờ trước khi cài</h1>
-        <p class="lead">
-            DroidGuard đọc manifest và mã DEX của ứng dụng, chấm điểm bằng mô hình học máy và các luật hành vi,
-            rồi trả về một kết luận kèm bằng chứng để bạn tự kiểm tra.
-        </p>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="/scan" class="btn btn-cyber btn-cta"><span>Quét file APK</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span></a>
-            <a href="/history" class="btn-arrow ms-2">Xem lịch sử quét <i class="fas fa-arrow-right-long"></i></a>
-        </div>
-    </div>
+<header class="page-head overview-heading">
+    <div><span class="eyebrow">KHÔNG GIAN PHÂN TÍCH</span><h1>Tổng quan</h1><p>Mỗi ứng dụng đều để lại dấu vết. Bắt đầu từ một file APK.</p></div>
+    <a href="/history" class="btn btn-ghost"><i class="fas fa-clock-rotate-left me-2"></i>Lịch sử quét</a>
+</header>
 
-    <div class="panel panel-pad">
-        <h2 class="panel-title">Mỗi lần quét đi qua bốn bước</h2>
-        <p class="panel-note">Nhật ký từng bước hiện ngay trên trang quét.</p>
-        <ol class="steps">
-            <li>
-                <h3>Đọc cấu trúc ứng dụng</h3>
-                <p>Giải nén APK, lấy quyền, thành phần và mã DEX. Nếu manifest bị làm méo, hệ thống chuyển sang trình đọc dự phòng.</p>
-                <span class="detail">AndroidManifest.xml · classes.dex</span>
-            </li>
-            <li>
-                <h3>Phân loại bằng học máy</h3>
-                <p>Vector đặc trưng được đưa vào mô hình XGBoost để ước lượng xác suất từng nhóm.</p>
-                <span class="detail">predict_proba → 5 nhóm</span>
-            </li>
-            <li>
-                <h3>Phân tích chuyên sâu cục bộ</h3>
-                <p>Kiểm tra chữ ký số, bytecode, chuỗi và dấu hiệu che giấu mã.</p>
-                <span class="detail">chữ ký · bytecode · chuỗi · che giấu</span>
-            </li>
-            <li>
-                <h3>Kết luận tổng hợp</h3>
-                <p>Gộp điểm học máy và điểm luật thành mức rủi ro /100. Có thể đối chiếu thêm với MobSF nếu đã cấu hình.</p>
-                <span class="detail">điểm rủi ro 0–100</span>
-            </li>
-        </ol>
+<section class="analysis-banner" aria-labelledby="analysisTitle">
+    <div class="banner-copy">
+        <span class="banner-label"><span></span> ANDROID MALWARE ANALYSIS</span>
+        <h2 id="analysisTitle">Hiểu ứng dụng.<br>Nhìn rõ rủi ro.</h2>
+        <p>Kiểm tra quyền truy cập, mã nguồn và dấu hiệu đáng ngờ trước khi đưa ứng dụng vào thiết bị.</p>
+        <a href="/scan" class="btn btn-cyber btn-cta"><span>Bắt đầu phân tích</span><span class="btn-cta-icon"><i class="fas fa-arrow-right"></i></span></a>
+        <div class="banner-meta"><span><i class="fas fa-file-code"></i> File APK</span><span><i class="fas fa-list-check"></i> Bằng chứng chi tiết</span><span><i class="fas fa-file-csv"></i> Phân loại CSV</span></div>
+    </div>
+    <div class="artifact-visual" aria-hidden="true">
+        <div class="artifact-grid"></div>
+        <div class="artifact-label label-top">01 / STATIC INSPECTION</div>
+        <div class="apk-artifact"><div class="artifact-corner"></div><svg viewBox="0 0 80 80" fill="none"><path d="M23 31h34v24a5 5 0 0 1-5 5H28a5 5 0 0 1-5-5V31Z" fill="currentColor"/><path d="M23 27a17 17 0 0 1 34 0H23Z" fill="currentColor"/><path d="m28 10-4-6m28 6 4-6M17 32v21m46-21v21M31 59v13m18-13v13" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="20" r="2" fill="#102b27"/><circle cx="48" cy="20" r="2" fill="#102b27"/></svg><strong>application.apk</strong><span>MANIFEST · DEX · SIGNATURE</span></div>
+        <div class="artifact-tag tag-manifest"><i class="fas fa-code"></i> AndroidManifest.xml</div><div class="artifact-tag tag-dex"><i class="fas fa-fingerprint"></i> classes.dex</div>
+        <div class="artifact-label label-bottom">QUYỀN TRUY CẬP <span>→</span> BẰNG CHỨNG <span>→</span> ĐÁNH GIÁ</div>
     </div>
 </section>
 
-<section class="panel panel-pad">
-    <h2 class="panel-title">Năm nhóm kết quả</h2>
-    <p class="panel-note">Mô hình xếp mỗi mẫu vào một trong các nhóm sau.</p>
-    <ul class="legend">
-        <li style="--sw: var(--c-benign);"><span class="swatch"></span><strong>Benign</strong><span>Ứng dụng an toàn.</span></li>
-        <li style="--sw: var(--c-adware);"><span class="swatch"></span><strong>Adware</strong><span>Hiển thị quảng cáo gây hại hoặc quá mức.</span></li>
-        <li style="--sw: var(--c-banking);"><span class="swatch"></span><strong>Banking</strong><span>Nhắm vào tài khoản và giao dịch tài chính.</span></li>
-        <li style="--sw: var(--c-sms);"><span class="swatch"></span><strong>SMS</strong><span>Đọc, gửi hoặc chặn tin nhắn để trục lợi hoặc đánh cắp mã xác thực.</span></li>
-        <li style="--sw: var(--c-riskware);"><span class="swatch"></span><strong>Riskware</strong><span>Không hẳn độc hại nhưng có hành vi rủi ro đến quyền riêng tư.</span></li>
-    </ul>
+<section class="overview-metrics" aria-label="Hoạt động trong trình duyệt">
+    <div class="metric"><div class="metric-icon"><i class="fas fa-layer-group"></i></div><div><span>Lượt phân tích</span><strong id="homeScans">0</strong></div><span class="metric-note">Trong trình duyệt này</span></div>
+    <div class="metric"><div class="metric-icon"><i class="fas fa-file-shield"></i></div><div><span>Mẫu đã xử lý</span><strong id="homeSamples">0</strong></div><span class="metric-note">APK và dòng CSV</span></div>
+    <a class="metric metric-action" href="/scan"><div class="metric-icon"><i class="fas fa-plus"></i></div><div><span>Tiếp tục công việc</span><strong>Quét mẫu mới</strong></div><i class="fas fa-arrow-up-right-from-square"></i></a>
 </section>
 
-<p class="footnote">Dữ liệu huấn luyện: CICMalDroid 2020 · 11,598 mẫu · 470 vector đặc trưng.</p>
+<div class="overview-grid">
+    <section class="panel recent-panel">
+        <div class="section-heading"><div><span class="eyebrow">HOẠT ĐỘNG</span><h2>Phân tích gần đây</h2></div><a href="/history" class="btn-arrow">Xem tất cả <i class="fas fa-arrow-right"></i></a></div>
+        <div class="table-responsive" id="homeRecentTable" hidden><table class="table align-middle mb-0"><thead><tr><th>Tên file</th><th>Thời gian</th><th class="text-end">Kết quả mẫu đầu</th></tr></thead><tbody id="homeRecentBody"></tbody></table></div>
+        <div class="home-empty" id="homeEmpty"><span class="empty-symbol"><i class="far fa-folder-open"></i></span><h3>Chưa có phiên phân tích</h3><p>Kết quả của bạn sẽ xuất hiện tại đây sau lần quét đầu tiên.</p><a href="/scan" class="btn btn-ghost">Chọn mẫu đầu tiên <i class="fas fa-arrow-right ms-2"></i></a></div>
+        <div class="panel-bottom"><i class="fas fa-laptop"></i> Lịch sử được lưu trong trình duyệt bạn đang sử dụng.</div>
+    </section>
+    <section class="panel workflow-panel"><div class="section-heading"><div><span class="eyebrow">CÁCH HOẠT ĐỘNG</span><h2>Từ mẫu đến bằng chứng</h2></div><i class="fas fa-route text-muted"></i></div><ol class="steps"><li><h3>Chọn mẫu phân tích</h3><p>Tải APK hoặc CSV đặc trưng.</p></li><li><h3>Kiểm tra và đối chiếu</h3><p>Đọc cấu trúc, đánh giá bằng mô hình và các luật hiện có.</p></li><li><h3>Xem kết quả chi tiết</h3><p>Đọc mức rủi ro, quyền và bằng chứng để kiểm tra lại.</p></li></ol><a href="/about" class="workflow-link">Tìm hiểu phạm vi phân tích <i class="fas fa-arrow-right"></i></a></section>
+</div>
+
+<section class="classification-strip"><div><span class="eyebrow">ĐỌC KẾT QUẢ</span><h2>Năm nhóm phân loại</h2></div><div class="class-labels"><span><i style="--class-color:var(--c-benign)"></i>Benign</span><span><i style="--class-color:var(--c-adware)"></i>Adware</span><span><i style="--class-color:var(--c-banking)"></i>Banking</span><span><i style="--class-color:var(--c-sms)"></i>SMS</span><span><i style="--class-color:var(--c-riskware)"></i>Riskware</span></div><a href="/about" aria-label="Giải thích các nhóm phân loại"><i class="far fa-circle-question"></i></a></section>
 {% endblock %}
+{% block extra_js %}<script src="{{ url_for('static', filename='js/overview.js') }}"></script>{% endblock %}

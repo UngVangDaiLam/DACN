@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="vi" data-bs-theme="dark">
+<html lang="vi" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}DroidGuard AI{% endblock %}</title>
+    <title>{% block title %}AndroWall{% endblock %}</title>
 
     <script>
         /* Đặt chủ đề trước khi vẽ trang để không bị chớp nền */
         (function () {
-            var t = 'dark';
-            try { t = localStorage.getItem('dg_theme') || 'dark'; } catch (e) {}
+            var t = 'light';
+            try { t = localStorage.getItem('dg_theme') || 'light'; } catch (e) {}
             document.documentElement.setAttribute('data-bs-theme', t === 'light' ? 'light' : 'dark');
         })();
     </script>
@@ -27,8 +27,9 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+<a class="skip-link" href="#mainContent">Chuyển đến nội dung</a>
 {% set nav = [
-    ('/', 'Trang chủ', 'fa-house'),
+    ('/', 'Tổng quan', 'fa-border-all'),
     ('/scan', 'Quét mẫu', 'fa-magnifying-glass-chart'),
     ('/dashboard', 'Thống kê', 'fa-chart-column'),
     ('/history', 'Lịch sử', 'fa-clock-rotate-left'),
@@ -39,10 +40,12 @@
     <aside class="sidebar">
         <a class="brand" href="/">
             <span class="brand-mark"><i class="fas fa-shield-halved"></i></span>
-            <span>DroidGuard AI<small>Phân tích mã độc Android</small></span>
+            <span>AndroWall<small>ANDROID SECURITY</small></span>
         </a>
 
-        <nav aria-label="Điều hướng chính">
+        <div class="workspace-label"><span class="workspace-avatar">AW</span><div>Không gian phân tích<small>Đồ án chuyên ngành</small></div><i class="fas fa-chevron-down" aria-hidden="true"></i></div>
+        <nav id="mainNavigation" aria-label="Điều hướng chính">
+            <p class="nav-caption">KHÔNG GIAN LÀM VIỆC</p>
             <ul class="nav-rail">
                 {% for href, label, icon in nav %}
                 <li><a href="{{ href }}"{% if request.path == href %} aria-current="page"{% endif %}><i class="fas {{ icon }}"></i>{{ label }}</a></li>
@@ -51,6 +54,7 @@
         </nav>
 
         <div class="sidebar-foot">
+            <a class="sidebar-guide" href="/about"><i class="fas fa-book-open"></i><span>Hiểu kết quả phân tích<small>Phạm vi và giới hạn của hệ thống</small></span><i class="fas fa-arrow-up-right-from-square"></i></a>
             <div class="health" id="serverHealth" data-state="unknown" role="status">
                 <span class="dot"></span><span id="serverHealthText">Đang kiểm tra máy chủ</span>
             </div>
@@ -60,9 +64,16 @@
         </div>
     </aside>
 
-    <main class="main">
-        {% block content %}{% endblock %}
-    </main>
+    <div class="workspace-main">
+        <header class="workspace-bar">
+            <div class="workspace-crumb"><button class="mobile-menu" type="button" id="menuToggle" aria-label="Mở điều hướng" aria-expanded="false" aria-controls="mainNavigation"><i class="fas fa-bars"></i></button><span>Không gian làm việc</span><span class="crumb-divider">/</span><strong>{% for href, label, icon in nav %}{% if request.path == href %}{{ label }}{% endif %}{% endfor %}</strong></div>
+            <div class="workspace-tools"><span class="workspace-tag">ANDROID / APK</span><a href="/about" aria-label="Thông tin hệ thống" class="help-link"><i class="far fa-circle-question"></i></a><span class="user-avatar" title="Đồ án chuyên ngành">AW</span></div>
+        </header>
+        <main class="main" id="mainContent" tabindex="-1">
+            {% block content %}{% endblock %}
+            <footer class="workspace-footer"><span>AndroWall <span class="footer-separator">/</span> Phân tích mã độc Android</span><span>Kiểm tra bằng chứng trước khi kết luận.</span></footer>
+        </main>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -91,6 +102,16 @@
     };
 
     (function () {
+        var menu = document.getElementById('menuToggle');
+        menu.addEventListener('click', function () {
+            var open = menu.getAttribute('aria-expanded') !== 'true';
+            menu.setAttribute('aria-expanded', String(open));
+            menu.setAttribute('aria-label', open ? 'Đóng điều hướng' : 'Mở điều hướng');
+            document.querySelector('.app').classList.toggle('nav-open', open);
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') menu.click();
+        });
         var root = document.documentElement;
         var toggle = document.getElementById('themeToggle');
         var label = document.getElementById('themeToggleLabel');
