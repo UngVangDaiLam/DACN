@@ -31,6 +31,7 @@ dataset/raw_apk/
 dataset/processed/
 
 # Scan data
+scans/
 scans/apk/
 scans/csv/
 
@@ -41,5 +42,3 @@ extract_malware_old.py
 candidates_*.csv
 
 *.bak
-models/static_model.pkl
-models/static_label_encoder.pkl
