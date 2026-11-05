@@ -1,0 +1,39 @@
+# Moi truong PHAT TRIEN: sua .py / template tren Windows -> container tu nap lai, khong can build lai.
+# San xuat (production) van dung CMD gunicorn trong Dockerfile, khong qua file nay.
+#
+#   docker compose up -d --build     # lan dau / khi doi requirements.txt hoac Dockerfile
+#   docker compose logs -f web       # xem log (co dong "Detected change ... reloading")
+#   docker compose restart web       # khi doi models/*.pkl (reloader chi theo doi file .py)
+#   docker compose down              # dung (volume "scans" van giu file quet)
+services:
+  web:
+    build: .
+    image: android-malware-web:dev
+    # Dung app.run() cua web/app.py; bat debug + nghe 0.0.0.0 bang 2 bien moi truong ma code
+    # da doc san (FLASK_DEBUG, APP_HOST) -> khong sua code.
+    command: ["python", "web/app.py"]
+    init: true                      # tini lam PID 1: chuyen SIGTERM cho Python, docker stop khong treo 10s
+    env_file:
+      - path: .env                  # doc luc chay; .env KHONG vao image (.dockerignore da loai)
+        required: false
+    environment:
+      FLASK_DEBUG: "1"              # bat debugger + reloader (CHI trong compose dev)
+      APP_HOST: "0.0.0.0"           # trong container phai nghe 0.0.0.0 thi port publish moi vao duoc
+      SCAN_FOLDER: /data/scans      # file quet nam ngoai repo, trong volume "scans"
+      PYTHONUNBUFFERED: "1"         # log hien ngay trong docker compose logs
+      PYTHONDONTWRITEBYTECODE: "1"  # khong ghi __pycache__ nguoc ra thu muc du an tren Windows
+    ports:
+      # Chi publish vao localhost: debugger Werkzeug cho chay ma tu xa, khong de lo ra mang LAN.
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - .:/app                      # bind mount ma nguon -> sua la reloader thay (stat polling)
+      - ./models:/app/models:ro     # model chi doc, container khong ghi de duoc
+      - scans:/data/scans           # SCAN_FOLDER: volume dat ten, ngoai repo
+    # Che cac thu muc cua host khong duoc lo vao container (mau ma doc, venv Windows, file quet cu).
+    tmpfs:
+      - /app/dataset
+      - /app/scans
+      - /app/venv
+
+volumes:
+  scans:
