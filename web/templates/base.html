@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" data-bs-theme="light">
+<html lang="vi" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,8 +8,8 @@
     <script>
         /* Đặt chủ đề trước khi vẽ trang để không bị chớp nền */
         (function () {
-            var t = 'light';
-            try { t = localStorage.getItem('dg_theme') || 'light'; } catch (e) {}
+            var t = 'dark';
+            try { t = localStorage.getItem('dg_theme') || 'dark'; } catch (e) {}
             document.documentElement.setAttribute('data-bs-theme', t === 'light' ? 'light' : 'dark');
         })();
     </script>
@@ -39,11 +39,11 @@
 <div class="app">
     <aside class="sidebar">
         <a class="brand" href="/">
-            <span class="brand-mark"><i class="fas fa-shield-halved"></i></span>
+            <span class="brand-mark"><i class="fas fa-shield-virus"></i></span>
             <span>AndroWall<small>ANDROID SECURITY</small></span>
         </a>
 
-        <div class="workspace-label"><span class="workspace-avatar">AW</span><div>Không gian phân tích<small>Đồ án chuyên ngành</small></div><i class="fas fa-chevron-down" aria-hidden="true"></i></div>
+        <div class="workspace-label"><span class="workspace-avatar">AW</span><div>Không gian phân tích<small>Đồ án chuyên ngành</small></div></div>
         <nav id="mainNavigation" aria-label="Điều hướng chính">
             <p class="nav-caption">KHÔNG GIAN LÀM VIỆC</p>
             <ul class="nav-rail">
@@ -66,7 +66,7 @@
 
     <div class="workspace-main">
         <header class="workspace-bar">
-            <div class="workspace-crumb"><button class="mobile-menu" type="button" id="menuToggle" aria-label="Mở điều hướng" aria-expanded="false" aria-controls="mainNavigation"><i class="fas fa-bars"></i></button><span>Không gian làm việc</span><span class="crumb-divider">/</span><strong>{% for href, label, icon in nav %}{% if request.path == href %}{{ label }}{% endif %}{% endfor %}</strong></div>
+            <div class="workspace-crumb"><button class="mobile-menu" type="button" id="menuToggle" aria-label="Mở điều hướng" aria-expanded="false" aria-controls="mainNavigation"><i class="fas fa-bars"></i></button><span>AndroWall</span><span class="crumb-divider">/</span><strong>{% for href, label, icon in nav %}{% if request.path == href %}{{ label }}{% endif %}{% endfor %}</strong></div>
             <div class="workspace-tools"><span class="workspace-tag">ANDROID / APK</span><a href="/about" aria-label="Thông tin hệ thống" class="help-link"><i class="far fa-circle-question"></i></a><span class="user-avatar" title="Đồ án chuyên ngành">AW</span></div>
         </header>
         <main class="main" id="mainContent" tabindex="-1">
