@@ -42,3 +42,6 @@ extract_malware_old.py
 candidates_*.csv
 
 *.bak
+
+# Tep chep tu ban du an cu (co the chua khoa)
+_tu_ban_ngoai/
