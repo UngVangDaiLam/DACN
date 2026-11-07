@@ -45,3 +45,9 @@ candidates_*.csv
 
 # Tep chep tu ban du an cu (co the chua khoa)
 _tu_ban_ngoai/
+
+# Lich su quet (sinh tu dong)
+scan_history.json
+
+# File thuc thi
+*.exe
