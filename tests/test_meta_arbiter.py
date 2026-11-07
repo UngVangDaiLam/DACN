@@ -1,4 +1,4 @@
-"""Kiem tra thang do cua Tang 5 (meta_arbiter).
+r"""Kiem tra thang do cua Tang 5 (meta_arbiter).
 
 Chay:  .\venv\Scripts\python.exe -B tests\test_meta_arbiter.py -v
 """
