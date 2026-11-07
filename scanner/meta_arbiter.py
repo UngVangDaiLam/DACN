@@ -66,16 +66,22 @@ def from_layer2(d):
     s = (d or {}).get("obfuscation_score")
     if not d or not d.get("available") or s is None:
         return _absent("L2", "Tang 2: vang mat")
-    return {"name": "L2", "available": True, "probs": None, "risk": float(s),
+    s = float(s)
+    if not 0.0 <= s <= 1.0:  # risk phai cung thang 0-1 voi xac suat
+        raise ValueError("L2: obfuscation_score ngoai thang 0-1: %r" % s)
+    return {"name": "L2", "available": True, "probs": None, "risk": s,
             "evidence": ["Tang 2: muc lam roi=%.2f" % s] + list(d.get("evidence", []))}
 
 
 def from_layer3(rule_score):
+    """rule_score thang 0-100 (deep_analysis) -> risk thang 0-1."""
     if rule_score is None:
         return _absent("L3", "Tang 3: vang mat")
-    return {"name": "L3", "available": True, "probs": None,
-            "risk": float(rule_score),
-            "evidence": ["Tang 3: rule_score=%.2f" % rule_score]}
+    r = float(rule_score) / 100.0
+    if not 0.0 <= r <= 1.0:
+        raise ValueError("L3: rule_score ngoai thang 0-100: %r" % rule_score)
+    return {"name": "L3", "available": True, "probs": None, "risk": r,
+            "evidence": ["Tang 3: rule_score=%.0f/100" % float(rule_score)]}
 
 
 def weighted_vote(layers, weights=WEIGHTS):
