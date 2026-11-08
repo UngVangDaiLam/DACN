@@ -41,7 +41,7 @@ ngrok.exe
 extract_malware_old.py
 candidates_*.csv
 
-*.bak
+*.bak*
 
 # Tep chep tu ban du an cu (co the chua khoa)
 _tu_ban_ngoai/
