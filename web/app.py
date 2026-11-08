@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import joblib
+import hashlib
 import os
 import re
 import sys
@@ -81,6 +82,29 @@ def _crash(message, exc=None):
                 f.write(tb.format_exc())
     except Exception:
         pass
+
+
+# Traceback day du trong error_crash.log CHI khi CRASH_TRACEBACK=1 (go loi cuc bo). Mac dinh TAT:
+# traceback chua duong dan tren may va thong bao loi (co the mang chuoi lay tu APK).
+CRASH_TRACEBACK = os.environ.get("CRASH_TRACEBACK") == "1"
+
+
+def _safe_ids(result=None, file_bytes=None):
+    """sha256 (chi hex) + ten goi (chi [A-Za-z0-9._-], <= 200 ky tu) de ghi log an toan."""
+    result = result or {}
+    sha = re.sub(r'[^0-9a-fA-F]', '', str(result.get('sha256') or ''))[:64]
+    if not sha and file_bytes:
+        sha = hashlib.sha256(file_bytes).hexdigest()
+    pkg = re.sub(r'[^A-Za-z0-9._-]', '?', str(result.get('package_name') or ''))[:200]
+    return sha or 'N/A', pkg or 'N/A'
+
+
+def _crash_safe(context, exc, result=None, file_bytes=None):
+    """Ghi crash log toi gian: ngu canh + loai loi + sha256 + ten goi. Khong ghi ten file
+    nguoi dung tai len, thong bao loi, duong dan hay bien moi truong (tru khi CRASH_TRACEBACK=1)."""
+    sha, pkg = _safe_ids(result, file_bytes)
+    _crash(f"{context}: {type(exc).__name__} | sha256={sha} | package={pkg}",
+           exc=exc if CRASH_TRACEBACK else None)
  
 # Override jsonify để tự động xử lý numpy types (tương thích Flask 2 + 3)
 from flask import json as flask_json
@@ -267,11 +291,7 @@ def attach_tang5(result):
         result['tang5'] = {k: t5.get(k) for k in TANG5_KEYS}
         result['tang5']['error'] = None
     except Exception as e:
-        # Chi ghi loai loi + sha256/ten goi (da loc ky tu): KHONG traceback, duong dan,
-        # noi dung thong bao loi (co the chua chuoi tu APK) hay bien moi truong.
-        sha = re.sub(r'[^0-9a-fA-F]', '', str(result.get('sha256') or ''))[:64] or 'N/A'
-        pkg = re.sub(r'[^A-Za-z0-9._-]', '?', str(result.get('package_name') or ''))[:200] or 'N/A'
-        _crash(f"Tang 5 (arbitrate_from_results) that bai: {type(e).__name__} | sha256={sha} | package={pkg}")
+        _crash_safe("Tang 5 (arbitrate_from_results) that bai", e, result)
         result['tang5'] = {k: None for k in TANG5_KEYS}
         result['tang5'].update(label=T5_UNKNOWN, risk_level=T5_UNKNOWN, layers_present=[],
                                evidence_by_layer={}, layer_errors=[], era_biased=False,
@@ -324,6 +344,7 @@ def scan_apk():
     # Xóa log cũ, bắt đầu phiên mới
     _log(f"=== BẮT ĐẦU PHÂN TÍCH: {file.filename} ===", new_scan=True)
  
+    file_bytes, ai_result = None, None  # de _crash_safe dung duoc ca khi loi xay ra som
     try:
         # 1. Đọc bytes trực tiếp từ upload stream trước khi đụng đến disk
         # (trước đây gặp [Errno 22] Invalid argument trên Windows khi đọc lại file vừa ghi;
@@ -391,7 +412,7 @@ def scan_apk():
                  level='SUCCESS' if verdict['level'] == 'safe' else 'WARN')
         except Exception as e:
             ai_result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
-            _crash(f"analyze_deep thất bại cho file: {file.filename}", exc=e)
+            _crash_safe("analyze_deep that bai (scan_apk)", e, ai_result)
             _log(f"Phân tích chuyên sâu lỗi: {e}", level='ERROR')
 
         # 4b. Tầng 5 — bỏ phiếu có trọng số trên kết quả L1/L3 đã có (không chạy lại phân tích)
@@ -421,7 +442,7 @@ def scan_apk():
 
     except Exception as e:
         _log(f"LỖI NGHIÊM TRỌNG: {str(e)}", level='ERROR')
-        _crash(f"scan_apk thất bại cho file: {file.filename}", exc=e)
+        _crash_safe("scan_apk that bai", e, ai_result, file_bytes)
         return jsonify({'success': False, 'error': str(e)}), 500
  
 @app.route('/api/scan-log', methods=['GET'])
@@ -540,7 +561,7 @@ def scan_file_in_manager(subfolder, filename):
                         attach_deep_analysis(result, tmp_path)
                     except Exception as e:
                         result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
-                        _crash('Phân tích tầng 2/3 trong file manager thất bại', exc=e)
+                        _crash_safe("analyze_deep that bai (file manager)", e, result)
                     attach_tang5(result)
             finally:
                 try: os.remove(tmp_path)
