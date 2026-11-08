@@ -3,7 +3,10 @@
 Dau vao L1 = dict tra ve tu MalwareDetector.analyze_apk (xac suat tinh bang %,
 khoa theo TEN lop, KHONG theo vi tri). Dau vao L4 = dict {ten lop: xac suat 0-1}.
 """
-CLASSES = ["Benign", "Adware", "Banking", "SMS", "Riskware"]  # chi de kiem tra tap ten lop
+import math
+import numbers
+
+CLASSES =["Benign", "Adware", "Banking", "SMS", "Riskware"]  # chi de kiem tra tap ten lop
 BENIGN = "Benign"
 UNKNOWN = "Không xác định"
 WEIGHTS = {"L1": 0.45, "L4": 0.45, "L2": 0.05, "L3": 0.05}  # trong so tay
@@ -16,6 +19,16 @@ ERA_BIASED = {"Adware"}  # nhan ho co the phan anh THOI DAI mau (xem buoc 5.2), 
 def _absent(name, why):
     return {"name": name, "available": False, "probs": None,
             "risk": None, "evidence": [why]}
+
+
+def _as_number(name, x):
+    """Chi nhan so thuc (int/float/numpy), KHONG nhan bool, chuoi, NaN. Sai -> ValueError."""
+    if isinstance(x, bool) or not isinstance(x, numbers.Real):
+        raise ValueError("%s: diem phai la so, nhan %r (%s)" % (name, x, type(x).__name__))
+    x = float(x)
+    if math.isnan(x):
+        raise ValueError("%s: diem la NaN (lop vang mat phai truyen None)" % name)
+    return x
 
 
 def _norm(name, probs, scale=1.0):
@@ -66,7 +79,7 @@ def from_layer2(d):
     s = (d or {}).get("obfuscation_score")
     if not d or not d.get("available") or s is None:
         return _absent("L2", "Tang 2: vang mat")
-    s = float(s)
+    s = _as_number("L2", s)
     if not 0.0 <= s <= 1.0:  # risk phai cung thang 0-1 voi xac suat
         raise ValueError("L2: obfuscation_score ngoai thang 0-1: %r" % s)
     return {"name": "L2", "available": True, "probs": None, "risk": s,
@@ -77,11 +90,12 @@ def from_layer3(rule_score):
     """rule_score thang 0-100 (deep_analysis) -> risk thang 0-1."""
     if rule_score is None:
         return _absent("L3", "Tang 3: vang mat")
-    r = float(rule_score) / 100.0
-    if not 0.0 <= r <= 1.0:
+    v = _as_number("L3", rule_score)
+    if not 0.0 <= v <= 100.0:
         raise ValueError("L3: rule_score ngoai thang 0-100: %r" % rule_score)
+    r = v / 100.0  # khong doan thang: 0.36 -> 0.0036 (co y)
     return {"name": "L3", "available": True, "probs": None, "risk": r,
-            "evidence": ["Tang 3: rule_score=%.0f/100" % float(rule_score)]}
+            "evidence": ["Tang 3: rule_score=%g/100" % v]}
 
 
 def weighted_vote(layers, weights=WEIGHTS):

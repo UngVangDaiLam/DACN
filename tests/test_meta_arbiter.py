@@ -39,5 +39,56 @@ class TestThangDo(unittest.TestCase):
             m.from_layer2({"available": True, "obfuscation_score": 1.5, "evidence": []})
 
 
+def l2(score):
+    return m.from_layer2({"available": True, "obfuscation_score": score, "evidence": []})
+
+
+class TestPhaB(unittest.TestCase):
+    def test_L3_36_thanh_0_36(self):
+        self.assertAlmostEqual(m.from_layer3(36)["risk"], 0.36)
+
+    def test_L3_0_36_giu_nguyen_thang_0_100(self):
+        # Co y: khong doan thang. 0.36 duoc hieu la 0.36/100.
+        self.assertAlmostEqual(m.from_layer3(0.36)["risk"], 0.0036)
+
+    def test_L3_bien_0_va_100_hop_le(self):
+        self.assertEqual(m.from_layer3(0)["risk"], 0.0)
+        self.assertEqual(m.from_layer3(100)["risk"], 1.0)
+
+    def test_L3_ngoai_0_100_bi_tu_choi(self):
+        for v in (120, 100.01, -1):
+            with self.assertRaises(ValueError, msg=repr(v)):
+                m.from_layer3(v)
+
+    def test_L3_khong_phai_so_bi_tu_choi(self):
+        for v in ("36", "abc", True, float("nan"), [36]):
+            with self.assertRaises(ValueError, msg=repr(v)):
+                m.from_layer3(v)
+
+    def test_L2_ngoai_0_1_hoac_khong_phai_so_bi_tu_choi(self):
+        for v in (-0.01, 1.01, "0.5", True, float("nan")):
+            with self.assertRaises(ValueError, msg=repr(v)):
+                l2(v)
+        self.assertEqual(l2(0)["risk"], 0.0)
+        self.assertEqual(l2(1)["risk"], 1.0)
+
+    def test_None_la_lop_vang_mat_khong_dien_0(self):
+        for r in (m.from_layer3(None), m.from_layer2(None),
+                  m.from_layer2({"available": True, "obfuscation_score": None})):
+            self.assertFalse(r["available"])
+            self.assertIsNone(r["risk"])
+        vang = vote(None)
+        self.assertNotIn("L3", vang["layers_present"])
+        # Vang mat => p_mal chi tu L1 (0.08); neu dien 0 thi se thanh 0.95*0.08 = 0.076
+        self.assertAlmostEqual(vang["p_malicious"], 0.08)
+        self.assertNotAlmostEqual(vang["p_malicious"], vote(0)["p_malicious"])
+
+    def test_smoke_cu_van_in_Banking_0_9(self):
+        import subprocess
+        out = subprocess.run([sys.executable, "-B", m.__file__], capture_output=True,
+                             text=True, check=True).stdout.strip()
+        self.assertEqual(out, "Banking 0.9")
+
+
 if __name__ == "__main__":
     unittest.main()
