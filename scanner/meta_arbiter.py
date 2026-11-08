@@ -144,7 +144,16 @@ def weighted_vote(layers, weights=WEIGHTS):
                                    "chi nen tin ket luan doc/sach" % out["label"])
     else:
         out["confidence"] = round(1 - p_mal, 4)
-        if tamper:  # nhan "sach" nhung manifest bi lam meo -> khong dam ket luan
+        l1_on = any(l["name"] == "L1" for l in voters)
+        l3 = next((l for l in av if l["name"] == "L3" and l["risk"] is not None), None)
+        # Luat mau thuan MOT CHIEU (dung san T_MAL, T_HIGH; khong them nguong moi):
+        # ket luan sach (p_mal < T_MAL) + L1 co mat + L3 >= T_HIGH -> khong dam ket luan.
+        # KHONG lam chieu nguoc (L1 doc, L3 thap): L3 chi bat ~45% mau doc (Pha C).
+        if l1_on and l3 is not None and l3["risk"] >= T_HIGH:
+            out["reason"] = ("L1 sạch nhưng L3 rất cao (rule_score=%g/100 >= %g)"
+                             % (l3["risk"] * 100, T_HIGH * 100))
+            out["label"] = out["risk_level"] = UNKNOWN
+        elif tamper:  # nhan "sach" nhung manifest bi lam meo -> khong dam ket luan
             out["reason"] = "Du doan sach nhung co dau hieu chong phan tich"
             out["label"] = out["risk_level"] = UNKNOWN
         else:

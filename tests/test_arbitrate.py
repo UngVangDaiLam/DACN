@@ -64,17 +64,41 @@ class TestArbitrate(unittest.TestCase):
             self.assertEqual(m.ARBITRATE_WEIGHTS[k], m.WEIGHTS[k])
 
     def test_xung_dot_L1_sach_manh_L3_rat_cao(self):
-        """Ghi lai HANH VI THAT cua weighted_vote hien tai (khong sua cho khop ky vong)."""
+        """E2: luat mau thuan MOT CHIEU -> 'Khong xac dinh' (truoc E2 la Benign, p_mal 0.069)."""
         r = self.run_(l1_res(98.0), fake_deep(rule_score=100, ratio=0.9))
         print("\n  [xung dot] label=%s risk=%s p_mal=%s conf=%s reason=%r layers=%s"
               % (r["label"], r["risk_level"], r["p_malicious"], r["confidence"],
                  r["reason"], r["layers_present"]))
-        # p_mal = (1-0.05)*0.02 + 0.05*1.0 = 0.069 -> L3=100 KHONG lat duoc L1, va KHONG
-        # co luat mau thuan L1-L3 -> ket luan 'sach', khong phai 'Khong xac dinh'.
-        self.assertAlmostEqual(r["p_malicious"], 0.069, places=4)
+        self.assertAlmostEqual(r["p_malicious"], 0.069, places=4)  # p_mal khong doi
+        self.assertEqual(r["label"], m.UNKNOWN)
+        self.assertEqual(r["risk_level"], m.UNKNOWN)
+        self.assertIn("L1 sạch nhưng L3 rất cao", r["reason"])
+        self.assertIn("Tang 3: rule_score=100/100", r["evidence"])
+
+    def test_E2_bien_dung_T_HIGH(self):
+        # dung nguong co san T_HIGH (0.8 -> rule_score 80), khong nguong moi
+        at = self.run_(l1_res(98.0), fake_deep(rule_score=m.T_HIGH * 100))
+        below = self.run_(l1_res(98.0), fake_deep(rule_score=m.T_HIGH * 100 - 1))
+        self.assertEqual(at["label"], m.UNKNOWN)
+        self.assertEqual(below["label"], m.BENIGN)
+
+    def test_E2_khong_lam_chieu_nguoc_L1_doc_L3_thap(self):
+        r = self.run_(l1_res(5.0), fake_deep(rule_score=2, ratio=0.1))
+        self.assertNotEqual(r["label"], m.UNKNOWN)
+        self.assertNotEqual(r["label"], m.BENIGN)
+        self.assertEqual(r["reason"], "")
+
+    def test_E2_L3_vang_khong_anh_huong(self):
+        r = self.run_(l1_res(98.0), fake_deep(rule_score=None, ratio=0.9))
         self.assertEqual(r["label"], m.BENIGN)
         self.assertEqual(r["reason"], "")
-        self.assertIn("Tang 3: rule_score=100/100", r["evidence"])
+
+    def test_E2_chi_ap_dung_khi_co_L1(self):
+        # chi L4 bo phieu (L1 vang) + L3 cao -> luat khong kich hoat
+        l4 = {"Benign": 0.98, "Adware": 0.005, "Banking": 0.005, "SMS": 0.005, "Riskware": 0.005}
+        r = m.weighted_vote([m.from_layer1(None), m.from_layer4(l4),
+                             m.from_layer2(None), m.from_layer3(100)])
+        self.assertEqual(r["label"], m.BENIGN)
 
     def test_L2_trong_so_0_khong_doi_p_mal_nhung_co_trong_evidence(self):
         a = self.run_(l1_res(40.0), fake_deep(rule_score=30, ratio=0.0))
