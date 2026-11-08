@@ -5,11 +5,14 @@ khoa theo TEN lop, KHONG theo vi tri). Dau vao L4 = dict {ten lop: xac suat 0-1}
 """
 import math
 import numbers
+import os
 
 CLASSES =["Benign", "Adware", "Banking", "SMS", "Riskware"]  # chi de kiem tra tap ten lop
 BENIGN = "Benign"
 UNKNOWN = "Không xác định"
 WEIGHTS = {"L1": 0.45, "L4": 0.45, "L2": 0.05, "L3": 0.05}  # trong so tay
+# arbitrate(): CHI doi L2 -> 0 (xem docstring arbitrate). Cac trong so/nguong khac giu nguyen.
+ARBITRATE_WEIGHTS = dict(WEIGHTS, L2=0.0)
 MIN_VOTERS = 1          # so tang "bo phieu" (L1/L4) toi thieu
 CONFLICT_GAP = 0.5      # L1 va L4 lech P(doc) > nguong -> mau thuan
 T_MAL, T_HIGH = 0.5, 0.8
@@ -122,7 +125,9 @@ def weighted_vote(layers, weights=WEIGHTS):
     cp = {c: sum(w[l["name"]] * l["probs"][c] for l in voters) / tw
           for c in CLASSES}
     p_mal = 1 - cp[BENIGN]
-    risks = [l for l in av if l["risk"] is not None]
+    # tang trong so 0 van nam trong layers_present/evidence nhung khong vao phep tinh
+    # (tranh chia cho 0 khi chi con tang trong so 0)
+    risks = [l for l in av if l["risk"] is not None and w[l["name"]] > 0]
     if risks:  # L2/L3: chi nhich nhe p_mal, khong tu quyet dinh nhan
         aw = sum(w[l["name"]] for l in risks)
         r = sum(w[l["name"]] * l["risk"] for l in risks) / aw
@@ -144,6 +149,89 @@ def weighted_vote(layers, weights=WEIGHTS):
             out["label"] = out["risk_level"] = UNKNOWN
         else:
             out["label"], out["risk_level"] = BENIGN, "Thấp"
+    return out
+
+
+_DETECTOR = None  # nap model Tang 1 mot lan
+
+
+def _default_detector():
+    global _DETECTOR
+    if _DETECTOR is None:
+        from scanner.detect_and_classify import MalwareDetector
+        _DETECTOR = MalwareDetector()
+    return _DETECTOR
+
+
+def arbitrate(apk_path, detector=None, deep_fn=None, weights=None):
+    """Phan xu 1 APK: L1 (MalwareDetector.analyze_apk) + L3 va L2 gan dung (analyze_deep),
+    L4 = None (chua co bao cao dong), roi weighted_vote.
+
+    * L2 GAN DUNG = obfuscation.obfuscated_class_ratio cua analyze_deep, trong so 0:
+      chi hien trong evidence va layers_present, KHONG anh huong p_malicious. Ly do:
+      (1) khong phai L2 that (chi do ti le ten lop bi thu gon, ProGuard/R8 cua app sach cung co);
+      (2) khong doc lap voi L3 (rule_score da gom nhom lam roi);
+      (3) Pha C: AUC 0,497 (n=139, chi minh hoa) ~ ngau nhien.
+      Cac trong so va nguong khac giu nguyen WEIGHTS/T_MAL/T_HIGH, KHONG chinh theo 139 mau.
+    * Tang loi/vang -> absent (KHONG dien 0); loi ghi vao layer_errors.
+    * "Khong xac dinh" khi thieu tang bo phieu (L1/L4) hoac L1-L4 mau thuan (weighted_vote).
+    * Khong dung deep_analysis.combine_verdict. VirusTotal (neu co) KHONG la dau vao.
+    detector / deep_fn: tiem phu thuoc (de test bang mock); mac dinh dung module that.
+    """
+    if not os.path.isfile(apk_path):
+        raise FileNotFoundError(apk_path)
+    weights = ARBITRATE_WEIGHTS if weights is None else weights
+    errors = []
+
+    # --- L1
+    res1 = None
+    try:
+        res1 = (detector or _default_detector()).analyze_apk(apk_path, os.path.basename(apk_path))
+        if not res1 or not res1.get("success", False):
+            errors.append("L1: %s" % ((res1 or {}).get("error") or "khong co ket qua"))
+            res1 = None
+    except Exception as e:
+        errors.append("L1: %s: %s" % (type(e).__name__, e))
+    try:
+        l1 = from_layer1(res1)
+    except ValueError as e:  # sai hop dong du lieu -> vang, khong tu sua
+        errors.append("L1: %s" % e)
+        l1 = from_layer1(None)
+
+    # --- L3 + L2 gan dung (cung 1 lan analyze_deep)
+    deep = None
+    try:
+        if deep_fn is None:
+            from scanner.deep_analysis import analyze_deep as deep_fn
+        deep = deep_fn(apk_path)
+    except Exception as e:
+        errors.append("L2/L3 (analyze_deep): %s: %s" % (type(e).__name__, e))
+    deep = deep or {}
+    ratio = (deep.get("obfuscation") or {}).get("obfuscated_class_ratio")
+    try:
+        l2 = from_layer2(None if ratio is None else {
+            "available": True, "obfuscation_score": ratio,
+            "evidence": ["Tang 2 (gan dung, trong so %.2f): obfuscated_class_ratio, "
+                         "khong phai L2 that" % weights["L2"]]})
+    except ValueError as e:
+        errors.append(str(e))
+        l2 = from_layer2(None)
+    try:
+        l3 = from_layer3(deep.get("rule_score"))
+    except ValueError as e:
+        errors.append(str(e))
+        l3 = from_layer3(None)
+
+    l4 = from_layer4(None)
+    layers = [l1, l4, l2, l3]
+    out = weighted_vote(layers, weights=weights)
+    out.update(
+        evidence_by_layer={l["name"]: list(l["evidence"]) for l in layers},
+        layer_errors=errors,
+        weights_used=dict(weights),
+        sha256=(res1 or {}).get("sha256"),
+        package_name=(res1 or {}).get("package_name"),
+    )
     return out
 
 
