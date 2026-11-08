@@ -3,7 +3,10 @@
 Buoc 5.2 - Diem OUT-OF-FOLD (OOF) cua Tang 1, dung de huan luyen meta (Tang 5).
 
 Moi mau chi duoc cham diem boi mo hinh KHONG thay mau do (va khong thay cac mau
-cung nhom package_name) luc huan luyen. SMOTE chi chay TRONG tap train cua tung fold.
+cung nhom package_name) luc huan luyen. Cau hinh mo hinh + can bang lop GIONG
+train_static_model.py (mo hinh dang trien khai models/static_model.pkl): cung tham so
+XGBoost, sample_weight 'balanced' tinh tren tap train cua tung fold, KHONG SMOTE.
+tests/test_oof_config.py kiem tra tu dong de hai file khong bi lech lai.
 
 Chay:  python scanner/oof_scores.py [--folds 5] [--permute]
   --permute : xao tron nhan truoc khi chay. Neu quy trinh khong ro ri thi do chinh xac
@@ -17,30 +20,34 @@ import sys
 
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import SMOTE
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLASSES = ["Adware", "Banking", "Benign", "Riskware", "SMS"]  # = static_label_encoder.classes_ (abc)
 
+# PHAI KHOP doi so XGBClassifier(...) trong train_static_model.py (= static_model.pkl.get_params()).
+# Khong dat objective/tree_method: de mac dinh y nhu ban trien khai (multi:softprob tu suy ra;
+# tree_method mac dinh cua xgboost dang cai).
+XGB_PARAMS = dict(n_estimators=300, max_depth=6, learning_rate=0.1,
+                  subsample=0.9, colsample_bytree=0.9, random_state=42,
+                  eval_metric="mlogloss")
+
 
 def make_model():
-    # Tham so mac dinh; doi cho KHOP train_static_model.py neu khac.
-    return XGBClassifier(n_estimators=200, max_depth=4, learning_rate=0.1,
-                         subsample=0.8, colsample_bytree=0.8,
-                         objective="multi:softprob", eval_metric="mlogloss",
-                         tree_method="hist", random_state=42, n_jobs=1)
+    # n_jobs=1 chi de OOF tai lap duoc tung bit; khong doi dinh nghia mo hinh.
+    return XGBClassifier(**XGB_PARAMS, n_jobs=1)
 
 
 def fit_predict(Xtr, ytr, Xte, K):
-    """SMOTE tren tap train roi huan luyen, tra xac suat cho Xte."""
-    minc = int(np.bincount(ytr, minlength=K).min())
-    if minc < 2:
-        raise RuntimeError("Tap train co lop chi %d mau - khong SMOTE duoc" % minc)
-    Xr, yr = SMOTE(k_neighbors=min(5, minc - 1), random_state=42).fit_resample(Xtr, ytr)
-    return make_model().fit(Xr, yr).predict_proba(Xte)
+    """Giong train_static_model.py: KHONG SMOTE; can bang lop bang sample_weight 'balanced'
+    tinh CHI tren tap train cua fold. Tra xac suat cho Xte (cot theo thu tu 0..K-1)."""
+    if len(np.unique(ytr)) < K:
+        raise RuntimeError("Tap train thieu lop - giam --folds")
+    w = compute_sample_weight("balanced", ytr)
+    return make_model().fit(Xtr, ytr, sample_weight=w).predict_proba(Xte)
 
 
 def run_oof(X, y, groups, K, n_splits, seed):
@@ -116,7 +123,7 @@ def main():
             print("CANH BAO: dung cot NGOAI schema cua model (chi de chan doan): %s" % extra)
 
     try:
-        X = df[feats].astype(float)
+        X = df[feats].fillna(0).astype(float)  # giong train_static_model.py (hien du lieu khong co NaN)
     except (ValueError, TypeError):
         sys.exit("Co cot khong phai so trong: %s" % feats)
     y = df["label"].map({c: i for i, c in enumerate(CLASSES)}).to_numpy()
