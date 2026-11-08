@@ -1,0 +1,29 @@
+Bo 5 mau co nhan ngoai 5 lop: {'Malware': 5}
+Bo 1 mau khong co opcode (khong co DEX)
+So mau moi lop: {'Adware': 15, 'Banking': 19, 'Benign': 70, 'Riskware': 22, 'SMS': 13} | tong 139
+So nhom (package_name): 136 / 139 mau
+Baseline lop da so (luon doan Benign): 0.504
+
+OOF accuracy (5 fold): 0.835
+              precision    recall  f1-score   support
+
+      Adware       0.71      0.80      0.75        15
+     Banking       0.68      0.68      0.68        19
+      Benign       0.94      0.97      0.96        70
+    Riskware       0.89      0.73      0.80        22
+         SMS       0.54      0.54      0.54        13
+
+    accuracy                           0.83       139
+   macro avg       0.75      0.74      0.75       139
+weighted avg       0.84      0.83      0.83       139
+
+Confusion matrix (hang=that, cot=doan; thu tu: ['Adware', 'Banking', 'Benign', 'Riskware', 'SMS'] )
+[[12  1  0  0  2]
+ [ 1 13  3  0  2]
+ [ 1  1 68  0  0]
+ [ 2  2  0 16  2]
+ [ 1  2  1  2  7]]
+
+In-sample accuracy (mo hinh da THAY nhan): 1.000
+Khoang cach in-sample - OOF = 0.165  <- day la muc 'ao tuong' neu dung diem in-sample
+Da ghi: dataset/processed/oof_layer1.csv

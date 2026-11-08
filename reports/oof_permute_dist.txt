@@ -1,0 +1,34 @@
+Phân phối accuracy OOF khi xáo trộn nhãn — scanner/oof_scores.py cấu hình đồng bộ (sha256 281f94bd8af3…)
+Lệnh: python scanner/oof_scores.py --permute --seed <s>, s = 1..20 (20 lần), --folds mặc định 5.
+Về seed: --seed đổi CẢ hoán vị nhãn LẪN cách chia fold (StratifiedGroupKFold(random_state=seed) chia trên nhãn đã xáo trộn);
+  kiểm tra riêng: 21/21 cách chia khác nhau (seed 42 và 1..20), không cách nào trùng cách chia ở chế độ thường. Tham số XGBoost giữ random_state=42.
+n = 139 (Adware 15, Banking 19, Benign 70, Riskware 22, SMS 13)
+
+seed  accuracy
+   1  0.381
+   2  0.331
+   3  0.403
+   4  0.381
+   5  0.396
+   6  0.374
+   7  0.367
+   8  0.309
+   9  0.309
+  10  0.388
+  11  0.396
+  12  0.410
+  13  0.381
+  14  0.309
+  15  0.403
+  16  0.324
+  17  0.410
+  18  0.410
+  19  0.367
+  20  0.353
+
+Số lần: 20
+Trung bình: 0.370
+Độ lệch chuẩn (mẫu, ddof=1): 0.036
+Min / Max: 0.309 / 0.410
+Mức ngẫu nhiên lý thuyết (tổng p_i^2, in trong stdout): 0.318
+Baseline lớp đa số (luôn đoán Benign, in trong stdout): 0.504
