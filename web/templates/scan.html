@@ -587,9 +587,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
+            <!-- TẦNG 5: KẾT LUẬN TỔNG HỢP (meta_arbiter) -->
+            <div class="col-12 mt-4" id="tang5-area">${renderTang5(data)}</div>
+            <!-- Điểm tham khảo (cũ, combine_verdict) — ngay dưới Tầng 5, đã làm mờ -->
+            <div class="col-12 mt-3" id="deep-report-area">${renderDeepSummary(data)}</div>
+
             <!-- BÁO CÁO PHÂN TÍCH CHUYÊN SÂU CỤC BỘ -->
             <div class="col-12 mt-4" id="code-layers-area">${renderCodeLayers(data)}</div>
-            <div class="col-12 mt-4" id="deep-report-area">${renderDeepSummary(data)}</div>
 
             ${window._currentTaskId ? `
             <!-- (Tuỳ chọn) MobSF — chỉ hiện khi server đã cấu hình MobSF -->
@@ -804,6 +808,46 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="row g-3">${card('Tầng 2 — Che giấu và nạp mã', deep.layer2)}${card('Tầng 3 — Nguy cơ rò rỉ dữ liệu', deep.layer3)}</div>`;
     }
 
+    // Tầng 5 (meta_arbiter.weighted_vote). Chỉ dùng escapeHtml; đặt ngay trước hàm tóm tắt
+    // phân tích chuyên sâu để nằm trong đoạn helpers mà tests/test_code_layers_ui.cjs cắt ra.
+    function renderTang5(data) {
+        const t = data && data.tang5;
+        if (!t) return '';
+        if (t.error) return `<div class="alert alert-warning"><i class="fas fa-triangle-exclamation me-1"></i>${escapeHtml(t.error)}</div>`;
+        const UNKNOWN = 'Không xác định';
+        const unknown = t.label === UNKNOWN;
+        const pct = v => (v === null || v === undefined || isNaN(v)) ? '—' : `${Math.round(Number(v) * 1000) / 10}%`;
+        const color = unknown ? '#facc15' : (t.label === 'Benign' ? '#4ade80' : '#f43f5e');
+        const names = {L1: 'Tầng 1 — Học máy tĩnh', L2: 'Tầng 2 — Làm rối (gần đúng, trọng số 0)',
+                       L3: 'Tầng 3 — Luật hành vi', L4: 'Tầng 4 — Phân tích động'};
+        const present = t.layers_present || [], ev = t.evidence_by_layer || {};
+        const layersHtml = ['L1', 'L2', 'L3', 'L4'].map(k => `<li class="list-group-item bg-transparent border-secondary text-white small">
+                <strong>${escapeHtml(names[k])}</strong>
+                ${present.includes(k) ? '<span class="badge bg-success ms-1">có mặt</span>' : '<span class="badge bg-secondary ms-1">vắng</span>'}
+                ${(ev[k] || []).map(e => `<div style="opacity:.75;overflow-wrap:anywhere;">${escapeHtml(e)}</div>`).join('')}
+            </li>`).join('');
+        const errs = (t.layer_errors || []).length
+            ? `<div class="small text-warning mt-2">Lỗi tầng: ${t.layer_errors.map(e => escapeHtml(e)).join(' | ')}</div>` : '';
+        const era = t.era_biased
+            ? '<div class="callout callout--caution mb-3"><i class="fas fa-clock-rotate-left me-1"></i> Nhãn họ có thể phản ánh thời đại của mẫu — chỉ nên tin kết luận độc/sạch.</div>' : '';
+        const second = unknown
+            ? `<div class="small text-warning mt-2">Lý do: ${escapeHtml(t.reason || 'Không đủ căn cứ để kết luận')}</div>`
+            : `<div class="small text-light mt-2">Độ tin cậy: ${pct(t.confidence)}</div>`;
+        return `<div class="p-3 rounded-3" style="background:${color}0f;border:1px solid ${color}66;">
+            <h6 class="text-white mb-3"><i class="fas fa-scale-balanced me-2"></i> Tầng 5 — Kết luận tổng hợp (bỏ phiếu có trọng số)</h6>
+            ${era}
+            <div class="row g-3 align-items-start">
+                <div class="col-md-4 text-center">
+                    <div class="fw-bold" style="font-size:1.6rem;color:${color};">${escapeHtml(t.label)}</div>
+                    <div class="text-light small">Mức rủi ro: ${escapeHtml(t.risk_level)}</div>
+                    <div class="text-light small">P(độc): ${pct(t.p_malicious)}</div>
+                    ${second}
+                </div>
+                <div class="col-md-8"><ul class="list-group list-group-flush">${layersHtml}</ul>${errs}</div>
+            </div>
+        </div>`;
+    }
+
     function renderDeepSummary(data) {
         const deep = data.deep, v = data.verdict;
         if (!deep || !v) return '';
@@ -821,13 +865,15 @@ document.addEventListener('DOMContentLoaded', function() {
             <div style="height:6px;background:rgba(255,255,255,.1);border-radius:3px;"><div style="height:6px;width:${Math.min(100, val)}%;background:${c};border-radius:3px;"></div></div></div>`;
         const mlNote = v.ml_risk === null || v.ml_risk === undefined
             ? '<div class="text-warning small mb-2"><i class="fas fa-circle-info me-1"></i>Mô hình học máy tĩnh chưa được train — kết luận dựa trên các lớp phân tích còn lại.</div>' : '';
+        // Khung cu (combine_verdict): giu de tham khao, KHONG phai ket luan Tang 5 -> lam mo.
         return `
-        <div class="p-3 rounded-3" style="background:${color}0f;border:1px solid ${color}66;">
+        <div class="p-3 rounded-3" style="background:rgba(148,163,184,.05);border:1px dashed rgba(148,163,184,.4);opacity:.85;">
+            <div class="small text-light mb-2" style="opacity:.75;"><i class="fas fa-circle-info me-1"></i>Công thức cũ, chỉ để tham khảo. Kết luận chính là khung Tầng 5 ở trên.</div>
             <div class="row g-3 align-items-center">
                 <div class="col-md-4 text-center">
-                    <div style="font-size:3.6rem;font-weight:900;line-height:1;color:${color};">${v.final_score}</div>
-                    <div class="text-light small" style="opacity:.7;">ĐIỂM RỦI RO TỔNG HỢP /100</div>
-                    <div class="fw-bold mt-2" style="color:${color};">${escapeHtml(v.verdict)}</div>
+                    <div style="font-size:1.8rem;font-weight:700;line-height:1;color:#94a3b8;">${v.final_score}</div>
+                    <div class="text-light small" style="opacity:.7;">Điểm tham khảo (cũ) /100</div>
+                    <div class="small mt-2" style="color:${color};opacity:.8;">${escapeHtml(v.verdict)}</div>
                 </div>
                 <div class="col-md-8">
                     <h6 class="text-white mb-3"><i class="fas fa-layer-group me-2" style="color:var(--neon-purple);"></i> Phân tích đa lớp (học máy + luật hành vi + chữ ký + bytecode)</h6>

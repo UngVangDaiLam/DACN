@@ -191,23 +191,17 @@ def arbitrate(apk_path, detector=None, deep_fn=None, weights=None):
     """
     if not os.path.isfile(apk_path):
         raise FileNotFoundError(apk_path)
-    weights = ARBITRATE_WEIGHTS if weights is None else weights
-    errors = []
+    l1_errors, deep_errors = [], []
 
     # --- L1
     res1 = None
     try:
         res1 = (detector or _default_detector()).analyze_apk(apk_path, os.path.basename(apk_path))
         if not res1 or not res1.get("success", False):
-            errors.append("L1: %s" % ((res1 or {}).get("error") or "khong co ket qua"))
+            l1_errors.append("L1: %s" % ((res1 or {}).get("error") or "khong co ket qua"))
             res1 = None
     except Exception as e:
-        errors.append("L1: %s: %s" % (type(e).__name__, e))
-    try:
-        l1 = from_layer1(res1)
-    except ValueError as e:  # sai hop dong du lieu -> vang, khong tu sua
-        errors.append("L1: %s" % e)
-        l1 = from_layer1(None)
+        l1_errors.append("L1: %s: %s" % (type(e).__name__, e))
 
     # --- L3 + L2 gan dung (cung 1 lan analyze_deep)
     deep = None
@@ -216,7 +210,30 @@ def arbitrate(apk_path, detector=None, deep_fn=None, weights=None):
             from scanner.deep_analysis import analyze_deep as deep_fn
         deep = deep_fn(apk_path)
     except Exception as e:
-        errors.append("L2/L3 (analyze_deep): %s: %s" % (type(e).__name__, e))
+        deep_errors.append("L2/L3 (analyze_deep): %s: %s" % (type(e).__name__, e))
+    return arbitrate_from_results(res1, deep, weights=weights,
+                                  l1_errors=l1_errors, deep_errors=deep_errors)
+
+
+def arbitrate_from_results(res1, deep, weights=None, l1_errors=(), deep_errors=()):
+    """Nhu arbitrate() nhung dung ket qua DA CO (khong chay lai L1 / analyze_deep), vd. web/app.py.
+
+    res1 = dict tu MalwareDetector.analyze_apk (hoac None); deep = dict tu analyze_deep (hoac None).
+    Cac key khac trong res1 (vd. 'deep', 'verdict' do web gan them) bi BO QUA: combine_verdict
+    KHONG la dau vao Tang 5. l1_errors / deep_errors: loi da gap khi goi 2 ham tren (ghi vao layer_errors).
+    """
+    weights = ARBITRATE_WEIGHTS if weights is None else weights
+    errors = list(l1_errors)
+    if res1 is not None and not res1.get("success", False):
+        errors.append("L1: %s" % (res1.get("error") or "khong co ket qua"))
+        res1 = None
+    try:
+        l1 = from_layer1(res1)
+    except ValueError as e:  # sai hop dong du lieu -> vang, khong tu sua
+        errors.append("L1: %s" % e)
+        l1 = from_layer1(None)
+
+    errors += list(deep_errors)
     deep = deep or {}
     ratio = (deep.get("obfuscation") or {}).get("obfuscated_class_ratio")
     try:

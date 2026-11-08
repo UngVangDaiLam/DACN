@@ -175,6 +175,28 @@ class TestArbitrate(unittest.TestCase):
         self.assertEqual(set(r["evidence_by_layer"]), {"L1", "L2", "L3", "L4"})
         self.assertNotIn("L4", r["layers_present"])
 
+    def test_from_results_trung_arbitrate(self):
+        # Pha G: web dung arbitrate_from_results voi ket qua da co -> phai giong arbitrate()
+        cases = [(l1_res(98.0), dict(rule_score=100, ratio=0.9)), (l1_res(5.0), dict(rule_score=2)),
+                 (l1_res(40.0), dict(rule_score=150, ratio=1.5)), (l1_res(60.0), dict()),
+                 ({"success": False, "error": "x"}, dict(rule_score=10))]
+        for res1, kw in cases:
+            a = self.run_(res1, fake_deep(**kw))
+            b = m.arbitrate_from_results(res1, fake_deep(**kw)(self.apk))
+            self.assertEqual(a, b, msg=repr((res1, kw)))
+        e = RuntimeError("hong zip")
+        a = self.run_(l1_res(40.0), fake_deep(exc=e))
+        b = m.arbitrate_from_results(l1_res(40.0), None,
+                                     deep_errors=["L2/L3 (analyze_deep): RuntimeError: hong zip"])
+        self.assertEqual(a, b)
+
+    def test_from_results_bo_qua_verdict_cua_web(self):
+        # key 'verdict' (combine_verdict) / 'deep' do web gan them KHONG duoc anh huong Tang 5
+        res1 = dict(l1_res(98.0), verdict={"final_score": 99, "level": "danger"}, deep={"x": 1})
+        a = m.arbitrate_from_results(res1, {"rule_score": 10})
+        b = m.arbitrate_from_results(l1_res(98.0), {"rule_score": 10})
+        self.assertEqual(a, b)
+
     def test_file_khong_ton_tai(self):
         with self.assertRaises(FileNotFoundError):
             m.arbitrate(self.apk + ".khong_co", detector=FakeDetector(l1_res(50)),

@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import re
 import sys
 import uuid
 import queue
@@ -36,6 +37,7 @@ analysis_results = {} # Lưu kết quả trạng thái
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scanner.detect_and_classify import MalwareDetector
 from scanner.deep_analysis import analyze_deep, combine_verdict
+from scanner.meta_arbiter import arbitrate_from_results, UNKNOWN as T5_UNKNOWN
  
 import numpy as np
  
@@ -248,6 +250,33 @@ def attach_deep_analysis(result, filepath):
         deep['rule_score'], ml_reliable=ml_reliable)
     result['version'] = deep['info']['version_name']
     return deep, result['verdict']
+
+
+TANG5_KEYS = ("label", "risk_level", "p_malicious", "confidence", "layers_present",
+              "evidence_by_layer", "layer_errors", "reason", "era_biased")
+
+
+def attach_tang5(result):
+    """Tang 5 (meta_arbiter) tu ket qua L1 + analyze_deep DA CO trong `result` (khong chay lai).
+    KHONG dung result['verdict'] (combine_verdict) lam dau vao. Loi -> khoi tang5 co 'error',
+    khong lam sap endpoint."""
+    try:
+        deep = result.get('deep')
+        deep_errors = [] if deep else ["L2/L3 (analyze_deep): khong co ket qua phan tich chuyen sau"]
+        t5 = arbitrate_from_results(result, deep, deep_errors=deep_errors)
+        result['tang5'] = {k: t5.get(k) for k in TANG5_KEYS}
+        result['tang5']['error'] = None
+    except Exception as e:
+        # Chi ghi loai loi + sha256/ten goi (da loc ky tu): KHONG traceback, duong dan,
+        # noi dung thong bao loi (co the chua chuoi tu APK) hay bien moi truong.
+        sha = re.sub(r'[^0-9a-fA-F]', '', str(result.get('sha256') or ''))[:64] or 'N/A'
+        pkg = re.sub(r'[^A-Za-z0-9._-]', '?', str(result.get('package_name') or ''))[:200] or 'N/A'
+        _crash(f"Tang 5 (arbitrate_from_results) that bai: {type(e).__name__} | sha256={sha} | package={pkg}")
+        result['tang5'] = {k: None for k in TANG5_KEYS}
+        result['tang5'].update(label=T5_UNKNOWN, risk_level=T5_UNKNOWN, layers_present=[],
+                               evidence_by_layer={}, layer_errors=[], era_biased=False,
+                               error=f"Không tính được kết luận Tầng 5 ({type(e).__name__}).")
+    return result['tang5']
  
 # ============ ROUTES ============
 @app.route('/')
@@ -364,6 +393,12 @@ def scan_apk():
             ai_result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
             _crash(f"analyze_deep thất bại cho file: {file.filename}", exc=e)
             _log(f"Phân tích chuyên sâu lỗi: {e}", level='ERROR')
+
+        # 4b. Tầng 5 — bỏ phiếu có trọng số trên kết quả L1/L3 đã có (không chạy lại phân tích)
+        t5 = attach_tang5(ai_result)
+        _log(f"TẦNG 5: {t5['label']} — P(độc) {t5['p_malicious']} — tầng có mặt {t5['layers_present']}"
+             + (f" — {t5['reason']}" if t5.get('reason') else ''),
+             level='ERROR' if t5.get('error') else 'SUCCESS')
 
         # 5. (Tuỳ chọn) đối chiếu MobSF — chỉ khi đã cấu hình API key
         task_id = None
@@ -506,6 +541,7 @@ def scan_file_in_manager(subfolder, filename):
                     except Exception as e:
                         result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
                         _crash('Phân tích tầng 2/3 trong file manager thất bại', exc=e)
+                    attach_tang5(result)
             finally:
                 try: os.remove(tmp_path)
                 except: pass
