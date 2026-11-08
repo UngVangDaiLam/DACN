@@ -198,6 +198,59 @@ def wstr(w, use):
     return " ".join("%s=%.2f" % (k, w[k]) for k in ("L1", "L2", "L3", "L4") if k in use)
 
 
+def _shown_name(path):
+    """Ten file hien thi: duong dan tuong doi trong du an (dau /); ngoai du an -> chi ten file."""
+    try:
+        rel = os.path.relpath(os.path.abspath(path), ROOT)
+    except ValueError:  # khac o dia (Windows)
+        return os.path.basename(path)
+    return os.path.basename(path) if rel.startswith("..") else rel.replace(os.sep, "/")
+
+
+def era_method(oof_path):
+    """Cach tinh hang chan doan thoi dai, ghi TEN FILE OOF THUC TE (--oof), khong viet cung."""
+    stem = os.path.splitext(os.path.basename(oof_path))[0]
+    return "RandomForest(300 cây, min_samples_leaf=2) 5 lớp, fold của %s (nhóm package_name)" % stem
+
+
+def build_notes(df, oof_path, l2l3_path, out_path, seed, boot, sens):
+    """Noi dung ablation_notes: ten file nguon/dich lay tu tham so thuc te (--oof, --l2l3, --out)."""
+    vc = df["label"].value_counts()
+    cls_n = ", ".join("%s=%d" % (c, vc.get(c, 0)) for c in m.CLASSES)
+    oof_name = os.path.basename(oof_path)
+    oof_stem = os.path.splitext(oof_name)[0]
+    l23_name = os.path.basename(l2l3_path)
+    return f"""Ghi chú cho {_shown_name(out_path)} (sinh bởi scanner/evaluate_ablation.py)
+
+1. ĐÂY LÀ MINH HỌA PHƯƠNG PHÁP, KHÔNG CÓ Ý NGHĨA THỐNG KÊ.
+   n={len(df)} ({cls_n}). Điểm L1 là out-of-fold nhưng vẫn chịu nhiễu nguồn/thời đại:
+   nhãn lớp trùng với nguồn tải (Adware = tar.gz cũ, Banking/Riskware/SMS = MalwareBazaar mới,
+   Benign = F-Droid), nên con số cao có thể phản ánh "nhận ra nguồn" chứ không phải hành vi.
+2. Dữ liệu: {oof_name} + {l23_name}, nối theo sha256. NaN -> None = tầng vắng mặt
+   (không điền 0). L2 = obfuscated_class_ratio (0-1), L3 = rule_score (0-100, chia 100 trong
+   meta_arbiter.from_layer3). L4 vắng (n=0).
+3. Quyết định nhị phân: P(độc) = 1 - P(Benign), ngưỡng T_MAL = {m.T_MAL} (cố định, không tinh chỉnh).
+   Trọng số = meta_arbiter.WEIGHTS = {m.WEIGHTS} (cố định). Nhãn họ (acc_ho_tham_khao) chỉ tham khảo,
+   tính trên mẫu độc thật đã bị bắt là độc.
+4. "Không xác định" tính riêng (n_khong_xac_dinh), không gộp vào đúng/sai; accuracy/recall/AUC
+   chỉ tính trên n_quyet_dinh.
+5. Hàng L2, L3 một mình: weighted_vote cần ít nhất 1 tầng bỏ phiếu (L1/L4, MIN_VOTERS={m.MIN_VOTERS})
+   nên sẽ trả 100% "Không xác định"; vì vậy dùng điểm rủi ro thô của chính tầng đó với cùng ngưỡng.
+6. L3 đã gồm hạng mục làm rối (obfuscation) nên không độc lập với L2.
+7. Bootstrap: seed={seed}, {boot} lần, lấy lại có hoàn lại trên các mẫu đã quyết định,
+   khoảng phân vị 2.5-97.5%. Mọi hàng dùng cùng seed.
+8. Hàng chẩn đoán thời đại: mô hình CHỈ dùng min_sdk + target_sdk (RandomForest tham số cố định),
+   dùng lại cột fold của {oof_stem} (StratifiedGroupKFold theo package_name, seed 42).
+   {df['package_name'].nunique(dropna=False)} nhóm / {len(df)} mẫu nên gần như không khác chia ngẫu nhiên
+   ({int(df['package_name'].isna().sum())} mẫu thiếu package_name); không có cột họ/chiến dịch.
+   Hàng này KHÔNG phải một tầng của meta: đặc trưng của Tầng 5 chỉ là điểm các tầng.
+9. Bảng nhạy trọng số (nhom = nhay_trong_so, w_L2=w_L3 = {sens}): CHỈ để xem độ nhạy,
+   KHÔNG dùng để chọn trọng số.
+10. Khác với eval_ablation.py có sẵn: file đó chỉ ablation NHÓM ĐẶC TRƯNG bên trong L1;
+   file này ablation THEO TẦNG ở đầu vào bộ tổng hợp (Tầng 5).
+"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--oof", default=os.path.join(ROOT, "dataset", "processed", "oof_layer1.csv"))
@@ -238,7 +291,7 @@ def main():
     dec, sc, fam = run_era(df, a.seed)
     rows.append(summarize(
         "Chẩn đoán thời đại: chỉ min_sdk+target_sdk", "chan_doan", "-",
-        "RandomForest(300 cây, min_samples_leaf=2) 5 lớp, fold của oof_layer1 (nhóm package_name)",
+        era_method(a.oof),
         "-", df, dec, sc, fam, a.seed, a.boot,
         "%d nhóm / %d mẫu nên gần như không khác chia ngẫu nhiên; không có cột họ/chiến dịch; "
         "nhãn lớp trùng nguồn tải (Adware = tar.gz cũ, Banking/Riskware/SMS = MalwareBazaar mới, "
@@ -260,35 +313,7 @@ def main():
 
     vc = df["label"].value_counts()
     cls_n = ", ".join("%s=%d" % (c, vc.get(c, 0)) for c in m.CLASSES)
-    notes = f"""Ghi chú cho reports/ablation.csv (sinh bởi scanner/evaluate_ablation.py)
-
-1. ĐÂY LÀ MINH HỌA PHƯƠNG PHÁP, KHÔNG CÓ Ý NGHĨA THỐNG KÊ.
-   n={len(df)} ({cls_n}). Điểm L1 là out-of-fold nhưng vẫn chịu nhiễu nguồn/thời đại:
-   nhãn lớp trùng với nguồn tải (Adware = tar.gz cũ, Banking/Riskware/SMS = MalwareBazaar mới,
-   Benign = F-Droid), nên con số cao có thể phản ánh "nhận ra nguồn" chứ không phải hành vi.
-2. Dữ liệu: oof_layer1.csv + l2l3_scores.csv, nối theo sha256. NaN -> None = tầng vắng mặt
-   (không điền 0). L2 = obfuscated_class_ratio (0-1), L3 = rule_score (0-100, chia 100 trong
-   meta_arbiter.from_layer3). L4 vắng (n=0).
-3. Quyết định nhị phân: P(độc) = 1 - P(Benign), ngưỡng T_MAL = {m.T_MAL} (cố định, không tinh chỉnh).
-   Trọng số = meta_arbiter.WEIGHTS = {m.WEIGHTS} (cố định). Nhãn họ (acc_ho_tham_khao) chỉ tham khảo,
-   tính trên mẫu độc thật đã bị bắt là độc.
-4. "Không xác định" tính riêng (n_khong_xac_dinh), không gộp vào đúng/sai; accuracy/recall/AUC
-   chỉ tính trên n_quyet_dinh.
-5. Hàng L2, L3 một mình: weighted_vote cần ít nhất 1 tầng bỏ phiếu (L1/L4, MIN_VOTERS={m.MIN_VOTERS})
-   nên sẽ trả 100% "Không xác định"; vì vậy dùng điểm rủi ro thô của chính tầng đó với cùng ngưỡng.
-6. L3 đã gồm hạng mục làm rối (obfuscation) nên không độc lập với L2.
-7. Bootstrap: seed={a.seed}, {a.boot} lần, lấy lại có hoàn lại trên các mẫu đã quyết định,
-   khoảng phân vị 2.5-97.5%. Mọi hàng dùng cùng seed.
-8. Hàng chẩn đoán thời đại: mô hình CHỈ dùng min_sdk + target_sdk (RandomForest tham số cố định),
-   dùng lại cột fold của oof_layer1 (StratifiedGroupKFold theo package_name, seed 42).
-   {df['package_name'].nunique(dropna=False)} nhóm / {len(df)} mẫu nên gần như không khác chia ngẫu nhiên
-   ({int(df['package_name'].isna().sum())} mẫu thiếu package_name); không có cột họ/chiến dịch.
-   Hàng này KHÔNG phải một tầng của meta: đặc trưng của Tầng 5 chỉ là điểm các tầng.
-9. Bảng nhạy trọng số (nhom = nhay_trong_so, w_L2=w_L3 = {a.sens}): CHỈ để xem độ nhạy,
-   KHÔNG dùng để chọn trọng số.
-10. Khác với eval_ablation.py có sẵn: file đó chỉ ablation NHÓM ĐẶC TRƯNG bên trong L1;
-   file này ablation THEO TẦNG ở đầu vào bộ tổng hợp (Tầng 5).
-"""
+    notes = build_notes(df, a.oof, a.l2l3, a.out, a.seed, a.boot, a.sens)
     with open(a.notes, "w", encoding="utf-8") as f:
         f.write(notes)
 
