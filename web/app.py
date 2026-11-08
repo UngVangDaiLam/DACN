@@ -105,6 +105,38 @@ def _crash_safe(context, exc, result=None, file_bytes=None):
     sha, pkg = _safe_ids(result, file_bytes)
     _crash(f"{context}: {type(exc).__name__} | sha256={sha} | package={pkg}",
            exc=exc if CRASH_TRACEBACK else None)
+
+
+# Loi tra ve trinh duyet: CHI thong bao chung + ma loi + loai loi (+ sha256). KHONG tra str(e):
+# thong bao loi co the chua duong dan may, IP noi bo, hoac chuoi lay tu APK (vd. ten muc trong zip).
+ERROR_MESSAGES = {
+    "E_APK": "Không phân tích được file APK (file hỏng, không phải APK hợp lệ hoặc cấu trúc bị làm méo).",
+    "E_CSV": "Không đọc được file CSV (sai định dạng hoặc thiếu cột đặc trưng).",
+    "E_UPLOAD": "Không lưu được file tải lên.",
+    "E_MOBSF": "Lỗi khi lấy báo cáo từ MobSF.",
+    "E_INTERNAL": "Lỗi nội bộ máy chủ khi phân tích.",
+}
+
+
+def _error_json(code, exc=None, status=500, sha256=None):
+    body = {'success': False, 'error': ERROR_MESSAGES[code], 'error_code': code}
+    if exc is not None:
+        body['error_type'] = type(exc).__name__
+    if sha256 and sha256 != 'N/A':
+        body['sha256'] = sha256
+    return jsonify(body), status
+
+
+_ABS_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\|/(?:home|Users|tmp|var|usr|etc|mnt|opt|root)/)[^\s'\"<>|,;)]*")
+_CTRL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _log_safe(text, limit=300):
+    """Chuoi tu ben ngoai dua vao latest_scan.log (duoc /api/scan-log tra cho trinh duyet):
+    bo ky tu dieu khien (chong gia mao dong log), an duong dan tuyet doi, cat do dai."""
+    s = _CTRL.sub(' ', str(text))
+    s = _ABS_PATH.sub('<đường dẫn>', s)
+    return s[:limit]
  
 # Override jsonify để tự động xử lý numpy types (tương thích Flask 2 + 3)
 from flask import json as flask_json
@@ -143,6 +175,20 @@ except Exception as e:
 print("="*60)
  
 # ============ WORKER PHÂN TÍCH TĨNH MOBSF (BACKGROUND WORKER) ============
+class MobSFError(Exception):
+    """Loi MobSF voi thong bao an toan: chi ma HTTP + buoc, KHONG mang noi dung phan hoi cua MobSF."""
+    def __init__(self, status, step):
+        self.status, self.step = status, step
+        super().__init__(f"MobSF {step}: HTTP {status}")
+
+    def user_message(self):
+        if self.status in (401, 403):
+            return f"❌ MobSF từ chối khóa API (HTTP {self.status}) — kiểm tra cấu hình khóa API MobSF trên máy chủ."
+        if self.step == "no_hash":
+            return "❌ MobSF không trả về hash sau khi tải lên."
+        return f"❌ MobSF trả lỗi HTTP {self.status} ở bước {self.step}."
+
+
 def mobsf_static_worker():
     """Upload APK lên MobSF, kích hoạt Static Analysis, trả về link xem báo cáo."""
     while True:
@@ -163,11 +209,11 @@ def mobsf_static_worker():
                     timeout=120
                 )
             if upload_res.status_code != 200:
-                raise Exception(f"Upload lỗi {upload_res.status_code}: {upload_res.text[:200]}")
- 
+                raise MobSFError(upload_res.status_code, "upload")
+
             mobsf_hash = upload_res.json().get('hash')
             if not mobsf_hash:
-                raise Exception(f"Không nhận được hash từ MobSF: {upload_res.text[:200]}")
+                raise MobSFError(upload_res.status_code, "no_hash")
             print(f"[MobSF] Upload OK — hash: {mobsf_hash}")
  
             # ── BƯỚC 2: Kích hoạt Static Analysis (apktool, dex2jar, ...) ───
@@ -195,10 +241,11 @@ def mobsf_static_worker():
                 "message": "⚠️ Không kết nối được tới máy chủ Kali. MobSF có thể đang tắt."
             })
         except Exception as e:
-            _crash(f"mobsf_static_worker task={task_id}", exc=e)
+            _crash_safe(f"mobsf_static_worker task={task_id}", e, {'sha256': task.get('sha256')})
             analysis_results[task_id].update({
                 "status": "error",
-                "message": f"❌ {str(e)}"
+                "message": e.user_message() if isinstance(e, MobSFError)
+                           else f"❌ Lỗi khi gửi tới MobSF ({type(e).__name__})."
             })
         finally:
             dynamic_task_queue.task_done()
@@ -329,7 +376,8 @@ def scan_csv():
     except Exception as e:
         import traceback
         print(f"[✗] analyze_csv lỗi: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        _crash_safe("scan_csv that bai", e)
+        return _error_json("E_CSV", e)
  
 @app.route('/scan/apk', methods=['POST'])
 def scan_apk():
@@ -342,7 +390,8 @@ def scan_apk():
         return jsonify({'success': False, 'error': 'No file selected'}), 400
  
     # Xóa log cũ, bắt đầu phiên mới
-    _log(f"=== BẮT ĐẦU PHÂN TÍCH: {file.filename} ===", new_scan=True)
+    # Giu ten file (giao dien so khop dong nay voi file.name), chi bo ky tu dieu khien/duong dan
+    _log(f"=== BẮT ĐẦU PHÂN TÍCH: {_log_safe(file.filename, 200)} ===", new_scan=True)
  
     file_bytes, ai_result = None, None  # de _crash_safe dung duoc ca khi loi xay ra som
     try:
@@ -377,7 +426,7 @@ def scan_apk():
             _log(f"[TAMPER] manifest_tampered={ai_result.get('manifest_tampered')}, "
                  f"zip_tampered={ai_result.get('zip_tampered')}", level='WARN')
         for reason in ai_result.get('incomplete_reasons') or []:
-            _log(f"[PHÂN TÍCH CHƯA ĐẦY ĐỦ] {reason}", level='WARN')
+            _log(f"[PHÂN TÍCH CHƯA ĐẦY ĐỦ] {_log_safe(reason)}", level='WARN')
 
         if not incomplete:
             vec = ai_result.get('binary_vector_sample', [])
@@ -392,7 +441,7 @@ def scan_apk():
         risk_combos = ai_result.get('risk_combos', [])
         if risk_combos:
             for combo in risk_combos:
-                _log(f"[CẢNH BÁO TỔ HỢP QUYỀN] {combo}", level='WARN')
+                _log(f"[CẢNH BÁO TỔ HỢP QUYỀN] {_log_safe(combo)}", level='WARN')
         else:
             _log("Không phát hiện tổ hợp quyền nguy hiểm.", level='INFO')
  
@@ -413,7 +462,7 @@ def scan_apk():
         except Exception as e:
             ai_result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
             _crash_safe("analyze_deep that bai (scan_apk)", e, ai_result)
-            _log(f"Phân tích chuyên sâu lỗi: {e}", level='ERROR')
+            _log(f"Phân tích chuyên sâu lỗi ({type(e).__name__}).", level='ERROR')
 
         # 4b. Tầng 5 — bỏ phiếu có trọng số trên kết quả L1/L3 đã có (không chạy lại phân tích)
         t5 = attach_tang5(ai_result)
@@ -429,7 +478,8 @@ def scan_apk():
                 "status": "queued",
                 "message": f"Đang xếp hàng... (Vị trí: {dynamic_task_queue.qsize() + 1})"
             }
-            dynamic_task_queue.put({'task_id': task_id, 'filepath': filepath, 'filename': filename})
+            dynamic_task_queue.put({'task_id': task_id, 'filepath': filepath, 'filename': filename,
+                                    'sha256': ai_result.get('sha256')})
             _log("Đã xếp hàng MobSF để đối chiếu.")
         _log("=== HOÀN TẤT PHÂN TÍCH TĨNH ===", level='SUCCESS')
 
@@ -441,9 +491,13 @@ def scan_apk():
         })
 
     except Exception as e:
-        _log(f"LỖI NGHIÊM TRỌNG: {str(e)}", level='ERROR')
+        # E_APK: detector tra success=False (APK khong phan tich duoc); con lai: E_INTERNAL
+        code = 'E_APK' if (ai_result is not None and not ai_result.get('success')) else 'E_INTERNAL'
+        sha, _ = _safe_ids(ai_result, file_bytes)
+        # Giu chuoi 'LỖI NGHIÊM TRỌNG': giao dien dung no de dung polling log
+        _log(f"LỖI NGHIÊM TRỌNG ({code}, {type(e).__name__}).", level='ERROR')
         _crash_safe("scan_apk that bai", e, ai_result, file_bytes)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return _error_json(code, e, sha256=sha)
  
 @app.route('/api/scan-log', methods=['GET'])
 def get_scan_log():
@@ -522,7 +576,8 @@ def get_mobsf_report(mobsf_hash):
     except requests.exceptions.ConnectionError:
         return jsonify({"error": "Không kết nối được tới máy chủ Kali. Kiểm tra lại IP/mạng."}), 503
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        _crash_safe("mobsf_report that bai", e)
+        return _error_json("E_MOBSF", e)
  
 @app.route('/file-manager')
 def file_manager():
@@ -556,6 +611,10 @@ def scan_file_in_manager(subfolder, filename):
             shutil.copy2(filepath, tmp_path)
             try:
                 result = detector.analyze_apk(tmp_path, filename)
+                if not result.get('success'):
+                    # result['error'] = "Lỗi phân tích: {e}" (co the chua chuoi tu APK) -> khong tra ra ngoai
+                    _crash("file manager: analyze_apk that bai (E_APK)")
+                    return _error_json('E_APK', status=200)
                 if result.get('success'):
                     try:
                         attach_deep_analysis(result, tmp_path)
@@ -573,7 +632,8 @@ def scan_file_in_manager(subfolder, filename):
     except Exception as e:
         import traceback
         print(f"[✗] scan_file_in_manager lỗi: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        _crash_safe("scan_file_in_manager that bai", e)
+        return _error_json("E_INTERNAL", e)
  
 @app.route('/file-manager/upload', methods=['POST'])
 def file_manager_upload():
@@ -603,7 +663,8 @@ def file_manager_upload():
     except Exception as e:
         import traceback
         print(f"[✗] file_manager_upload lỗi: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        _crash_safe("file_manager_upload that bai", e)
+        return _error_json("E_UPLOAD", e)
  
  
 @app.route('/file-manager/delete/<subfolder>/<path:filename>', methods=['DELETE'])

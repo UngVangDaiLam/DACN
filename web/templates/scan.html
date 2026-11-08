@@ -233,7 +233,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="callout callout--danger">
                         <h3 class="panel-title text-danger"><i class="fas fa-triangle-exclamation me-2"></i>Phân tích thất bại</h3>
                         <p class="mb-2">${escapeHtml(data.error || 'Lỗi không xác định từ máy chủ')}</p>
-                        <p class="text-muted small mb-0">Xem chi tiết trong <code>web/error_crash.log</code> trên máy chạy Flask.</p>
+                        ${(data.error_code || data.error_type || data.sha256) ? `<p class="small mb-2">${[
+                            data.error_code ? `Mã lỗi: <code>${escapeHtml(data.error_code)}</code>` : '',
+                            data.error_type ? `Loại lỗi: <code>${escapeHtml(data.error_type)}</code>` : '',
+                            data.sha256 ? `SHA256: <code style="word-break:break-all;">${escapeHtml(data.sha256)}</code>` : ''
+                        ].filter(Boolean).join(' · ')}</p>` : ''}
+                        <p class="text-muted small mb-0">Xem chi tiết trong <code>web/error_crash.log</code> trên máy chạy Flask (đặt <code>CRASH_TRACEBACK=1</code> khi gỡ lỗi cục bộ để có traceback đầy đủ).</p>
                     </div>`;
                 return;
             }
@@ -1144,7 +1149,7 @@ window.exportToPDF = function() {
         if (resultDiv) {
             resultDiv.innerHTML = '<div class="text-center py-5">'
                 + '<div class="spinner-border text-info mb-3" style="width:3rem;height:3rem;"></div>'
-                + '<h5 class="text-info mt-3">Đang phân tích <strong>' + filename + '</strong>...</h5>'
+                + '<h5 class="text-info mt-3">Đang phân tích <strong>' + escapeHtml(filename) + '</strong>...</h5>'
                 + '</div>';
             resultDiv.scrollIntoView({ behavior: 'smooth' });
         }
@@ -1154,7 +1159,8 @@ window.exportToPDF = function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.success === false) {
-                    if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+                    if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + escapeHtml(data.error)
+                        + (data.error_code ? ' (mã <code>' + escapeHtml(data.error_code) + '</code>)' : '') + '</div>';
                     return;
                 }
                 if (type === 'apk') {
@@ -1164,7 +1170,7 @@ window.exportToPDF = function() {
                 }
             })
             .catch(function(err) {
-                if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi kết nối: ' + err.message + '</div>';
+                if (resultDiv) resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi kết nối: ' + escapeHtml(err.message) + '</div>';
             });
     })();
     // ────────────────────────────────────────────────────────────────────────
