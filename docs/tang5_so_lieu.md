@@ -35,7 +35,7 @@ _Nguồn: `dataset/processed/static_features.csv` (sha256 228c720eba85…), `dat
 | accuracy 5 lớp (argmax p_*) | 0.863 | 139 |
 | macro-F1 5 lớp | 0.791 | 139 |
 | accuracy nhị phân (P(độc)=1-p_Benign >= 0.5) | 0.978 | 139 |
-| kiểm tra permutation | không có trong file | 139 |
+| kiểm tra permutation (oof_scores.py --permute, seed mặc định 42, 1 lần xáo trộn) | OOF accuracy sau xáo trộn nhãn = 0.374; mức ngẫu nhiên kỳ vọng (tổng p_i^2) = 0.318; baseline lớp đa số = 0.504 (`reports/oof_permute.txt`) | 139 |
 | số fold (cột fold) | 5 (0: 28 mẫu, 1: 28 mẫu, 2: 28 mẫu, 3: 28 mẫu, 4: 27 mẫu) | 139 |
 
 | lớp | n | precision | recall | F1 |
@@ -46,7 +46,7 @@ _Nguồn: `dataset/processed/static_features.csv` (sha256 228c720eba85…), `dat
 | SMS | 13 | 0.75 | 0.692 | 0.72 |
 | Riskware | 22 | 0.9 | 0.818 | 0.857 |
 
-_Nguồn: `dataset/processed/oof_layer1.csv` (sha256 d356c641b1b4…)_
+_Nguồn: `dataset/processed/oof_layer1.csv` (sha256 d356c641b1b4…), `reports/oof_permute.txt` (sha256 6f769b53f179…)_
 
 ## 3. Ablation theo tầng và chẩn đoán thời đại
 
@@ -134,7 +134,9 @@ _Nguồn: `reports/ablation.csv` (sha256 1171926dc2dc…)_
 | Luật E2 chưa kích hoạt trên 139 mẫu | rule_score cao nhất = 79; ngưỡng E2 = T_HIGH×100 = 80; số mẫu >= ngưỡng = 0. | dataset/processed/l2l3_scores.csv, scanner/meta_arbiter.py |
 | L4 vắng | n = 0 (ablation_notes.txt mục 2: "L4 vắng (n=0)"); hàng 'Đầy đủ L1+L2+L3+L4' trùng 'L1+L2+L3'. | reports/ablation_notes.txt |
 | L2 là xấp xỉ, trọng số 0 trong arbitrate | L2 = obfuscated_class_ratio; ARBITRATE_WEIGHTS = {'L1': 0.45, 'L4': 0.45, 'L2': 0.0, 'L3': 0.05}; AUC L2 (điểm thô) = 0.497. | scanner/meta_arbiter.py, reports/ablation.csv |
-| Stacking với một tầng L1 cho kết quả âm | số liệu: không có trong file (scanner/stacking.py không ghi file kết quả). | — |
+| Stacking với một tầng L1 cho kết quả âm | L1 thô (OOF): accuracy 0.863, macro-F1 0.791, log-loss 0.420; Meta LR (CV lồng): accuracy 0.835, macro-F1 0.753, log-loss 0.501; nhị phân — L1 thô: độc bắt được 67/69, sạch bị báo nhầm 1/70; Meta LR: độc bắt được 69/69, sạch bị báo nhầm 4/70; Meta CV accuracy sau xáo trộn nhãn: 0.180 (mức ngẫu nhiên kỳ vọng in trong file: 0.318). stacking.py seed mặc định 7. | reports/stacking_l1.txt, reports/stacking_permute.txt |
+
+_Nguồn: `reports/ablation_notes.txt` (sha256 1be7f6a70371…), `dataset/processed/l2l3_scores.csv` (sha256 1a0889ed2fb8…), `scanner/meta_arbiter.py` (sha256 86a833fc8746…), `reports/stacking_l1.txt` (sha256 af19e31e605c…), `reports/stacking_permute.txt` (sha256 6fe0c40fc2d6…)_
 
 Thông số XGBoost/huấn luyện chưa đồng bộ (đọc từ mã nguồn, không phải file kết quả):
 
