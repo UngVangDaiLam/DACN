@@ -158,6 +158,8 @@ def weighted_vote(layers, weights=WEIGHTS):
             out["label"] = out["risk_level"] = UNKNOWN
         else:
             out["label"], out["risk_level"] = BENIGN, "Thấp"
+    if out["label"] == UNKNOWN:  # moi ca 'Khong xac dinh': khong bao do tin cay, giu p_malicious
+        out["confidence"] = None
     return out
 
 

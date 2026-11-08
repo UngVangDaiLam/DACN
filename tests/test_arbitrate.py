@@ -70,6 +70,7 @@ class TestArbitrate(unittest.TestCase):
               % (r["label"], r["risk_level"], r["p_malicious"], r["confidence"],
                  r["reason"], r["layers_present"]))
         self.assertAlmostEqual(r["p_malicious"], 0.069, places=4)  # p_mal khong doi
+        self.assertIsNone(r["confidence"])  # buoc 1 sau E2: Khong xac dinh -> confidence None
         self.assertEqual(r["label"], m.UNKNOWN)
         self.assertEqual(r["risk_level"], m.UNKNOWN)
         self.assertIn("L1 sạch nhưng L3 rất cao", r["reason"])
@@ -92,6 +93,31 @@ class TestArbitrate(unittest.TestCase):
         r = self.run_(l1_res(98.0), fake_deep(rule_score=None, ratio=0.9))
         self.assertEqual(r["label"], m.BENIGN)
         self.assertEqual(r["reason"], "")
+
+    def test_khong_xac_dinh_luon_confidence_None_giu_p_mal(self):
+        # (a) ca lam meo manifest + du doan sach
+        t = dict(l1_res(98.0), manifest_tampered=1)
+        r = m.weighted_vote([m.from_layer1(t), m.from_layer4(None),
+                             m.from_layer2(None), m.from_layer3(None)])
+        self.assertEqual(r["label"], m.UNKNOWN)
+        self.assertIsNone(r["confidence"])
+        self.assertAlmostEqual(r["p_malicious"], 0.02)
+        # (b) mau thuan L1-L4: tra som, p_malicious chua tinh (None) nhu truoc
+        l4_doc = {"Benign": 0.02, "Adware": 0.02, "Banking": 0.9, "SMS": 0.03, "Riskware": 0.03}
+        r = m.weighted_vote([m.from_layer1(l1_res(98.0)), m.from_layer4(l4_doc),
+                             m.from_layer2(None), m.from_layer3(None)])
+        self.assertEqual(r["label"], m.UNKNOWN)
+        self.assertIn("mau thuan", r["reason"])
+        self.assertIsNone(r["confidence"])
+        self.assertIsNone(r["p_malicious"])
+        # (c) thieu tang bo phieu
+        r = m.weighted_vote([m.from_layer1(None), m.from_layer4(None),
+                             m.from_layer2(None), m.from_layer3(50)])
+        self.assertIsNone(r["confidence"])
+        # (d) ket luan co dinh van co confidence
+        r = self.run_(l1_res(98.0), fake_deep(rule_score=10))
+        self.assertEqual(r["label"], m.BENIGN)
+        self.assertIsNotNone(r["confidence"])
 
     def test_E2_chi_ap_dung_khi_co_L1(self):
         # chi L4 bo phieu (L1 vang) + L3 cao -> luat khong kich hoat
