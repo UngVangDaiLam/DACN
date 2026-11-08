@@ -1,0 +1,6 @@
+Tang dung: ['L1'] | dac trung meta: 5
+So mau moi lop: {'Adware': 15, 'Banking': 19, 'Benign': 70, 'Riskware': 22, 'SMS': 13} | tong 139
+So nhom: 136 / 139 mau
+>>> XAO TRON NHAN: meta phai ~ ngau nhien <<<
+Muc ngau nhien ky vong (tong p_i^2): 0.318
+Meta CV accuracy sau xao tron: 0.180
