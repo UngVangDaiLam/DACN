@@ -1064,7 +1064,6 @@ window.exportToPDF = function() {
     const wrapper = document.createElement('div');
     wrapper.id = '__pdf_wrapper__';
     wrapper.style.cssText = [
-        'position:absolute', 'left:-9999px', 'top:0',
         'width:750px', 'background:#fff', 'color:#1e293b',
         'font-family:Arial,sans-serif', 'font-size:13px', 'padding:32px', 'box-sizing:border-box'
     ].join(';');
@@ -1082,7 +1081,8 @@ window.exportToPDF = function() {
       </div>
       ${sectionApp}${sectionAI}${sectionCols}${sectionRisk}${footer}`;
 
-    document.body.appendChild(wrapper);
+    // KHONG gan wrapper vao body va KHONG dat o -9999px: html2pdf tu sao chep wrapper vao lop phu an
+    // (.html2pdf__container) roi chup; ban sao giu 'left:-9999px' lam container cao 0 -> trang trang.
 
     const opt = {
         margin: [8, 8, 8, 8],
@@ -1090,7 +1090,7 @@ window.exportToPDF = function() {
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
             scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
-            scrollX: 0, scrollY: 0, windowWidth: 750,
+            scrollX: 0, scrollY: 0,
             // onclone: reset position trong clone context để html2canvas render đúng
             // (element ở -9999px trong DOM thật, nhưng static/visible trong clone)
             onclone: function(clonedDoc) {
@@ -1107,11 +1107,9 @@ window.exportToPDF = function() {
 
     html2pdf().set(opt).from(wrapper).save()
         .then(function() {
-            document.body.removeChild(wrapper);
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download me-2"></i> Xuất Báo Cáo PDF'; }
         })
         .catch(function(err) {
-            document.body.removeChild(wrapper);
             alert('Xuất PDF thất bại: ' + err);
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download me-2"></i> Xuất Báo Cáo PDF'; }
         });
