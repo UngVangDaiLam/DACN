@@ -1,0 +1,6 @@
+# Minimal offline layer 2/3 CLI environment; observed direct versions.
+# Transitive dependencies must also be locked for a fully reproducible environment.
+# Do not use --system-site-packages when preparing an isolated environment.
+androguard==4.1.3
+apkInspector==1.3.6
+yara-python==4.5.4

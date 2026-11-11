@@ -17,12 +17,21 @@ CAPABILITIES = {
     "reflection_use": FAMILY_B,
     "crypto_use": FAMILY_B,
     "encoded_payload_hint": FAMILY_B,
+    "embedded_code_payload": FAMILY_B,
+    "name_obfuscation_hint": FAMILY_B,
+    "high_entropy_hint": FAMILY_B,
     "sms_exfiltration_risk": FAMILY_B,
     "location_exfiltration_risk": FAMILY_B,
     "device_id_exfiltration_risk": FAMILY_B,
     "phone_number_exfiltration_risk": FAMILY_B,
     "camera_exfiltration_risk": FAMILY_B,
     "clipboard_exfiltration_risk": FAMILY_B,
+    "account_exfiltration_risk": FAMILY_B,
+    "audio_exfiltration_risk": FAMILY_B,
+    "notification_exfiltration_risk": FAMILY_B,
+    "contacts_exfiltration_risk": FAMILY_B,
+    "call_log_exfiltration_risk": FAMILY_B,
+    "calendar_exfiltration_risk": FAMILY_B,
     # ho C (Tang 4) - de san, Tang 4 chua lam
     "accessibility_abuse": FAMILY_C,
     "overlay": FAMILY_C,
@@ -40,16 +49,37 @@ RULE_TO_CAPABILITY = {
     "reflection": "reflection_use",
     "crypto": "crypto_use",
     "encoded_string": "encoded_payload_hint",
+    "base64_decode": "encoded_payload_hint",
+    "encoded_string_reversal": "encoded_payload_hint",
+    "loader_with_encoding": "dynamic_code_loading",
+    "embedded_payload": "embedded_code_payload",
+    "short_class_names": "name_obfuscation_hint",
+    "dex_high_entropy": "high_entropy_hint",
+    "resource_high_entropy": "high_entropy_hint",
+    # Explicit rules emitted by scanner/rules/layer2.yar; never trust arbitrary
+    # technique metadata as permission to accept an unknown rule.
+    "yara_DEX_Dynamic_Load_Reflection": "dynamic_code_loading",
+    "yara_DEX_Cipher_Base64": "encoded_payload_hint",
+    "yara_Native_Dynamic_Linker": "native_code_loading",
+    "yara_Native_DEX_Loader": "dynamic_code_loading",
 }
 
 DATA_TYPE_TO_CAPABILITY = {  # Tang 3: rule sensitive_network_same_method
     "SMS": "sms_exfiltration_risk",
+    "MMS": "sms_exfiltration_risk",
     "Vị trí": "location_exfiltration_risk",
     "Định danh thiết bị": "device_id_exfiltration_risk",
     "Định danh thuê bao": "device_id_exfiltration_risk",
     "Số điện thoại": "phone_number_exfiltration_risk",
     "Camera": "camera_exfiltration_risk",
     "Clipboard": "clipboard_exfiltration_risk",
+    "Tài khoản": "account_exfiltration_risk",
+    "Âm thanh": "audio_exfiltration_risk",
+    "Âm thanh/hình ảnh": "audio_exfiltration_risk",
+    "Thông báo": "notification_exfiltration_risk",
+    "Danh bạ": "contacts_exfiltration_risk",
+    "Nhật ký cuộc gọi": "call_log_exfiltration_risk",
+    "Lịch": "calendar_exfiltration_risk",
 }
 
 SEVERITY_WEIGHT = {"info": 0.05, "low": 0.15, "medium": 0.35}
@@ -89,7 +119,7 @@ def merge_family_b(*layers):
     """
     merged = {}
     for layer in layers:
-        if not layer:
+        if not layer or layer.get('available') is False or layer.get('status') == 'unavailable':
             continue
         for f in layer.get("findings") or []:
             sev, origin = f.get("severity"), f.get("origin", "unknown")

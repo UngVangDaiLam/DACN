@@ -20,6 +20,8 @@ from collections import Counter, defaultdict
 
 from androguard.misc import AnalyzeAPK
 from scanner.code_layers import analyze_code_layers
+from scanner.artifact_scan import scan_artifacts
+from scanner.family_scores import score_family_b
 
 try:  # androguard ghi log DEBUG rất nhiều → chỉ giữ WARNING trở lên
     import sys as _sys
@@ -459,7 +461,14 @@ def _grade(score):
 
 def analyze_deep(apk_path):
     """Chạy toàn bộ các lớp phân tích tĩnh cục bộ. Trả về dict báo cáo (JSON-serializable)."""
-    a, d, dx = AnalyzeAPK(apk_path)
+    parse_error = None
+    try:
+        a, d, dx = AnalyzeAPK(apk_path)
+    except Exception as exc:
+        # Keep file-level evidence when a deliberately damaged DEX cannot be parsed.
+        from androguard.core.apk import APK
+        parse_error = f"{type(exc).__name__}: {exc}"
+        a, d, dx = APK(apk_path), [], None
 
     with open(apk_path, "rb") as f:
         data = f.read()
@@ -492,7 +501,12 @@ def analyze_deep(apk_path):
     manifest, f_man = _analyze_manifest(a)
     bytecode, f_code = _analyze_bytecode(dx, d, bool(manifest["sensitive_services"]) and any("accessib" in s.lower() for s in manifest["sensitive_services"]))
     obf, f_obf = _analyze_obfuscation(a, dx)
-    code_layers = analyze_code_layers(a, dx, obf)
+    artifact_report = scan_artifacts(apk_path)
+    code_layers = analyze_code_layers(a, dx, obf, artifact_report)
+    for layer in code_layers.values():
+        layer['sha256'] = hashes['sha256']
+        if parse_error:
+            layer['parse_error'] = parse_error
 
     findings = f_cert + f_man + f_code + f_obf
     findings.sort(key=lambda x: (SEVERITY_ORDER[x["severity"]], -x["score"]))
@@ -511,6 +525,9 @@ def analyze_deep(apk_path):
     return {
         "info": info,
         **code_layers,
+        # Shared code_behavior evidence for layer 5. Keep separate from the
+        # existing final verdict until arbitration weights are calibrated.
+        "family_b": score_family_b(code_layers['layer2'], code_layers['layer3']),
         "certificate": cert,
         "manifest": manifest,
         "bytecode": bytecode,

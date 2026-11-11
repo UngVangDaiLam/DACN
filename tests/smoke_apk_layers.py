@@ -20,7 +20,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="apk_layers_") as scan_dir:
         os.environ["SCAN_FOLDER"] = scan_dir
         os.environ["MOBSF_API_KEY"] = ""
-        from web.app import app, detector
+        from web.app import app
 
         with app.test_client() as client:
             assert client.get("/scan").status_code == 200
@@ -34,14 +34,13 @@ def main():
             assert payload["task_id"] is None
             for key in ("layer2", "layer3"):
                 layer = result["deep"][key]
-                assert layer["status"] == "completed", layer
+                assert layer["status"] == "completed", {k: layer.get(k) for k in ('status', 'analysis_errors', 'issues')}
                 assert layer["methods_scanned"] > 0
                 print(key, json.dumps({k: layer[k] for k in
                     ("status", "methods_scanned", "finding_count", "counts_by_origin", "truncated")}, ensure_ascii=False))
 
             # Exercise file-manager response integration without parsing a large APK twice.
-            with patch.object(detector, "analyze_apk", return_value={k: v for k, v in result.items() if k not in ("deep", "verdict")}), \
-                 patch("web.app.analyze_deep", return_value=result["deep"]):
+            with patch("web.app.analyze_apk_pipeline", return_value=result):
                 response = client.get("/file-manager/scan/apk/" + result["filename"])
                 assert response.status_code == 200
                 assert response.get_json()["deep"]["layer3"]["status"] == "completed"
