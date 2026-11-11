@@ -37,7 +37,7 @@ analysis_results = {} # Lưu kết quả trạng thái
 # Thêm đường dẫn để import scanner
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scanner.detect_and_classify import MalwareDetector
-from scanner.deep_analysis import analyze_deep, combine_verdict
+from scanner.pipeline_runner import run_apk_analysis as analyze_apk_pipeline
 from scanner.meta_arbiter import arbitrate_from_results, UNKNOWN as T5_UNKNOWN
 from web.layer4_jobs import Layer4Jobs
 
@@ -159,6 +159,7 @@ _default_scan = r'C:\scans' if os.name == 'nt' else os.path.join(os.path.dirname
 app.config['SCAN_FOLDER'] = os.environ.get('SCAN_FOLDER', _default_scan)
 app.config['UPLOAD_FOLDER'] = os.path.join(app.config['SCAN_FOLDER'], 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+app.config['APK_ANALYSIS_TIMEOUT'] = float(os.environ.get('APK_ANALYSIS_TIMEOUT', '180'))
  
 # Tạo thư mục
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -177,7 +178,8 @@ try:
     print(f"✅ Can classify: {detector.class_names}")
 except Exception as e:
     print(f"❌ Error loading detector: {e}")
-    sys.exit(1)
+    detector = None
+    print('Tầng 1/CSV chưa khả dụng; worker APK vẫn có thể cung cấp bằng chứng Tầng 2/3.')
  
 print("="*60)
  
@@ -316,20 +318,6 @@ def save_uploaded_file(file, subfolder):
     return new_filename, filepath
 
 
-def attach_deep_analysis(result, filepath):
-    """Shared report for upload and file-manager scans; keep ML output compatible."""
-    deep = analyze_deep(filepath)
-    result['deep'] = deep
-    # APK không phân tích được (analysis_incomplete): Tầng 1 không dự đoán, class/confidence = None
-    # -> kết luận chỉ dựa vào luật, tránh combine_verdict tính toán với None.
-    ml_reliable = not (result.get('unreliable', False) or result.get('analysis_incomplete', False))
-    result['verdict'] = combine_verdict(
-        result.get('class') or '1', result.get('confidence') or 0,
-        deep['rule_score'], ml_reliable=ml_reliable)
-    result['version'] = deep['info']['version_name']
-    return deep, result['verdict']
-
-
 TANG5_KEYS = ("label", "risk_level", "p_malicious", "confidence", "layers_present",
               "evidence_by_layer", "layer_errors", "reason", "era_biased")
 
@@ -374,6 +362,8 @@ def scan_csv():
     if not file.filename.endswith('.csv'):
         return jsonify({'success': False, 'error': 'Only CSV files are supported'}), 400
  
+    if detector is None:
+        return jsonify({'success': False, 'error': 'Mô hình CSV chưa khả dụng; hãy kiểm tra cấu hình model.'}), 503
     filename, filepath = save_uploaded_file(file, 'csv')
     try:
         result = detector.analyze_csv(filepath, filename)
@@ -388,128 +378,63 @@ def scan_csv():
  
 @app.route('/scan/apk', methods=['POST'])
 def scan_apk():
-    """API quét file APK (Kết hợp AI + Hàng đợi MobSF)"""
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
- 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No file selected'}), 400
- 
-    # Xóa log cũ, bắt đầu phiên mới
+    """Stream the upload to disk; all parsing shares one worker deadline."""
+    file = request.files.get('file')
+    if file is None or not file.filename:
+        return jsonify({'success': False, 'error': 'Chưa chọn tệp APK.'}), 400
+    if not file.filename.lower().endswith('.apk'):
+        return jsonify({'success': False, 'error': 'Chỉ hỗ trợ tệp APK.'}), 400
     # Giu ten file (giao dien so khop dong nay voi file.name), chi bo ky tu dieu khien/duong dan
     _log(f"=== BẮT ĐẦU PHÂN TÍCH: {_log_safe(file.filename, 200)} ===", new_scan=True)
- 
-    file_bytes, ai_result = None, None  # de _crash_safe dung duoc ca khi loi xay ra som
+    result = None  # de _crash_safe dung duoc ca khi loi xay ra som
     try:
-        # 1. Đọc bytes trực tiếp từ upload stream trước khi đụng đến disk
-        # (trước đây gặp [Errno 22] Invalid argument trên Windows khi đọc lại file vừa ghi;
-        #  venv hiện chạy Python 3.13 — không phải 3.14 như ghi chú cũ)
-        file_bytes = file.read()
-        _log(f"Đã đọc {len(file_bytes):,} bytes từ upload stream.")
- 
-        # 2. Lưu bytes xuống disk (để MobSF upload sau)
-        filename = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:12]}.apk"
-        filepath = os.path.join(app.config['SCAN_FOLDER'], 'apk', filename)
-        with open(filepath, 'wb') as _dst:
-            _dst.write(file_bytes)
-        _log(f"Đã lưu: {filename}")
- 
-        # 3. AI phân tích tĩnh — truyền bytes; detector tự ghi ra file tạm riêng
-        #    (extract_features cần đường dẫn) rồi xóa, không đọc lại file `filepath` ở trên
-        _log("Đang khởi động Androguard — giải nén APK, đọc DEX bytecode...")
-        ai_result = detector.analyze_apk(file_bytes, filename)
- 
-        if not ai_result.get('success'):
-            raise Exception(ai_result.get('error', 'Lỗi phân tích APK'))
- 
-        _log(f"Trích xuất xong {ai_result.get('total_permissions', 0)} quyền từ AndroidManifest.xml "
-             f"(nguồn manifest: {ai_result.get('manifest_source')}).")
-        incomplete = bool(ai_result.get('analysis_incomplete'))
-        if not incomplete:
-            _log(f"Số đặc trưng khác 0: {ai_result.get('feature_count', 0)}/{len(detector.feature_names)}.")
-        _log(f"SHA256: {ai_result.get('sha256', 'N/A')}")
-        if ai_result.get('manifest_tampered') or ai_result.get('zip_tampered'):
-            _log(f"[TAMPER] manifest_tampered={ai_result.get('manifest_tampered')}, "
-                 f"zip_tampered={ai_result.get('zip_tampered')}", level='WARN')
-        for reason in ai_result.get('incomplete_reasons') or []:
-            _log(f"[PHÂN TÍCH CHƯA ĐẦY ĐỦ] {_log_safe(reason)}", level='WARN')
+        filename, filepath = save_uploaded_file(file, 'apk')
+        _log('Đang phân tích APK trong worker có giới hạn thời gian cho toàn bộ các tầng...')
+        def report_progress(stage, message):
+            _log(f"PROGRESS::{stage}::{message}")
 
-        if not incomplete:
-            vec = ai_result.get('binary_vector_sample', [])
-            _log(f"Vector đặc trưng (20 cột đầu): [{', '.join(str(v) for v in vec)}]")
-            _log(f"Đang bơm vector vào model XGBoost (.predict_proba)...")
-            _log(f"KẾT QUẢ: {ai_result.get('name')} — Độ tin cậy: {ai_result.get('confidence')}%", level='SUCCESS')
-        else:
-            _log(f"KẾT QUẢ: {ai_result.get('label')} — không gọi model (phân tích chưa đầy đủ).", level='WARN')
-        for note in ai_result.get('notes') or []:
-            _log(note, level='WARN')
+        result = analyze_apk_pipeline(
+            filepath,
+            filename,
+            timeout=app.config['APK_ANALYSIS_TIMEOUT'],
+            progress=report_progress,
+        )
+        if not result.get('success'):
+            _log(result.get('error', 'Không hoàn tất phân tích'), level='ERROR')
+            return jsonify({'success': False, 'error': result.get('error'),
+                            'ai_result': result, 'task_id': None}), result.get('http_status', 503)
+        for name in ('layer2', 'layer3'):
+            layer = result['deep'][name]
+            _log(f"{name}: {layer['finding_count']} phát hiện; trạng thái {layer['status']}.")
 
-        risk_combos = ai_result.get('risk_combos', [])
-        if risk_combos:
-            for combo in risk_combos:
-                _log(f"[CẢNH BÁO TỔ HỢP QUYỀN] {_log_safe(combo)}", level='WARN')
-        else:
-            _log("Không phát hiện tổ hợp quyền nguy hiểm.", level='INFO')
- 
-        if ai_result.get('confidence') is not None:
-            ai_result['confidence'] = round(float(ai_result['confidence']), 2)
- 
-        # 4. Phân tích chuyên sâu cục bộ (chữ ký, manifest, bytecode, chuỗi, che giấu) + kết hợp với AI
-        _log("Đang chạy phân tích chuyên sâu cục bộ (chữ ký / manifest / bytecode / chuỗi)...")
-        try:
-            deep, verdict = attach_deep_analysis(ai_result, filepath)
-            for key in ('layer2', 'layer3'):
-                layer = deep[key]
-                _log(f"{key}: {layer['finding_count']} phát hiện, "
-                     f"{layer['methods_scanned']} hàm, trạng thái {layer['status']}.")
-            _log(f"Luật hành vi: {deep['rule_score']}/100 ({len(deep['findings'])} phát hiện).")
-            _log(f"KẾT LUẬN TỔNG HỢP: {verdict['verdict']} — điểm {verdict['final_score']}/100",
-                 level='SUCCESS' if verdict['level'] == 'safe' else 'WARN')
-        except Exception as e:
-            ai_result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
-            _crash_safe("analyze_deep that bai (scan_apk)", e, ai_result)
-            _log(f"Phân tích chuyên sâu lỗi ({type(e).__name__}).", level='ERROR')
-
-        # 4b. Tầng 5 — bỏ phiếu có trọng số trên kết quả L1/L3 đã có (không chạy lại phân tích)
-        t5 = attach_tang5(ai_result)
+        # Tầng 5 — bỏ phiếu có trọng số trên kết quả L1/L3 do worker trả về (không chạy lại phân tích)
+        t5 = attach_tang5(result)
         _log(f"TẦNG 5: {t5['label']} — P(độc) {t5['p_malicious']} — tầng có mặt {t5['layers_present']}"
              + (f" — {t5['reason']}" if t5.get('reason') else ''),
              level='ERROR' if t5.get('error') else 'SUCCESS')
 
-        # Tầng 4 nhận chính APK đã lưu ở đầu lượt quét.
-        layer4_task_id = layer4_jobs.submit(filepath, hashlib.sha256(file_bytes).hexdigest())
+        # Tầng 4 nhận chính APK đã lưu ở đầu lượt quét (SHA256 tính lại từ file trên đĩa).
+        with open(filepath, 'rb') as saved_apk:
+            layer4_task_id = layer4_jobs.submit(filepath, hashlib.file_digest(saved_apk, 'sha256').hexdigest())
 
-        # 5. (Tuỳ chọn) đối chiếu MobSF — chỉ khi đã cấu hình API key
         task_id = None
         if API_KEY:
             task_id = str(uuid.uuid4())
-            analysis_results[task_id] = {
-                "status": "queued",
-                "message": f"Đang xếp hàng... (Vị trí: {dynamic_task_queue.qsize() + 1})"
-            }
+            analysis_results[task_id] = {'status': 'queued', 'message': 'Đang xếp hàng đối chiếu MobSF.'}
             dynamic_task_queue.put({'task_id': task_id, 'filepath': filepath, 'filename': filename,
-                                    'sha256': ai_result.get('sha256')})
-            _log("Đã xếp hàng MobSF để đối chiếu.")
-        _log("=== HOÀN TẤT PHÂN TÍCH TĨNH ===", level='SUCCESS')
-
-        return jsonify({
-            'success': True,
-            'ai_result': ai_result,
-            'task_id': task_id,
-            'layer4_task_id': layer4_task_id,
-            'message': 'Đã phân tích xong.'
-        })
-
+                                    'sha256': result.get('sha256')})
+        _log('=== HOÀN TẤT PHÂN TÍCH TĨNH ===', level='SUCCESS')
+        return jsonify({'success': True, 'ai_result': result, 'task_id': task_id,
+                        'layer4_task_id': layer4_task_id,
+                        'message': 'Đã phân tích xong.'})
     except Exception as e:
-        # E_APK: detector tra success=False (APK khong phan tich duoc); con lai: E_INTERNAL
-        code = 'E_APK' if (ai_result is not None and not ai_result.get('success')) else 'E_INTERNAL'
-        sha, _ = _safe_ids(ai_result, file_bytes)
+        sha, _ = _safe_ids(result)
         # Giu chuoi 'LỖI NGHIÊM TRỌNG': giao dien dung no de dung polling log
-        _log(f"LỖI NGHIÊM TRỌNG ({code}, {type(e).__name__}).", level='ERROR')
-        _crash_safe("scan_apk that bai", e, ai_result, file_bytes)
-        return _error_json(code, e, sha256=sha)
- 
+        _log(f"LỖI NGHIÊM TRỌNG (E_INTERNAL, {type(e).__name__}).", level='ERROR')
+        _crash_safe("scan_apk that bai", e, result)
+        return _error_json('E_INTERNAL', e, sha256=sha)
+
+
 @app.route('/api/scan-log', methods=['GET'])
 def get_scan_log():
     """Trả về nội dung log phiên quét hiện tại cho terminal UI."""
@@ -614,28 +539,14 @@ def scan_file_in_manager(subfolder, filename):
  
     try:
         if subfolder == 'csv':
+            if detector is None:
+                return jsonify({'success': False, 'error': 'Mô hình CSV chưa khả dụng.'}), 503
             result = detector.analyze_csv(filepath, filename)
         elif subfolder == 'apk':
-            import tempfile, shutil
-            with tempfile.NamedTemporaryFile(suffix='.apk', delete=False, dir=app.config['UPLOAD_FOLDER']) as tmp:
-                tmp_path = tmp.name
-            shutil.copy2(filepath, tmp_path)
-            try:
-                result = detector.analyze_apk(tmp_path, filename)
-                if not result.get('success'):
-                    # result['error'] = "Lỗi phân tích: {e}" (co the chua chuoi tu APK) -> khong tra ra ngoai
-                    _crash("file manager: analyze_apk that bai (E_APK)")
-                    return _error_json('E_APK', status=200)
-                if result.get('success'):
-                    try:
-                        attach_deep_analysis(result, tmp_path)
-                    except Exception as e:
-                        result['deep_error'] = 'Không hoàn tất phân tích chuyên sâu; chưa có kết quả tầng 2 và 3.'
-                        _crash_safe("analyze_deep that bai (file manager)", e, result)
-                    attach_tang5(result)
-            finally:
-                try: os.remove(tmp_path)
-                except: pass
+            result = analyze_apk_pipeline(filepath, filename, timeout=app.config['APK_ANALYSIS_TIMEOUT'])
+            if not result.get('success'):
+                return jsonify(result), result.get('http_status', 503)
+            attach_tang5(result)
         else:
             return jsonify({'success': False, 'error': 'Unsupported file type'}), 400
         if result.get('confidence') is not None: result['confidence'] = float(result['confidence'])
