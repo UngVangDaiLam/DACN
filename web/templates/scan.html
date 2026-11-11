@@ -751,6 +751,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             <!-- TẦNG 5: KẾT LUẬN TỔNG HỢP (meta_arbiter) -->
             <div class="col-12 mt-4" id="tang5-area">${renderTang5(data)}</div>
+            <!-- TẦNG 5: xác nhận chéo theo họ bằng chứng (family_arbiter) — thêm cạnh, không thay khối trên -->
+            <div class="col-12 mt-3" id="family-arbiter-area">${renderArbiterSummary(data)}</div>
             <!-- Điểm tham khảo (cũ, combine_verdict) — ngay dưới Tầng 5, đã làm mờ -->
             <div class="col-12 mt-3" id="deep-report-area">${renderDeepSummary(data)}</div>
 
@@ -1068,6 +1070,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="col-md-8"><ul class="list-group list-group-flush">${layersHtml}</ul>${errs}</div>
             </div>
+        </div>`;
+    }
+
+    // Tầng 5 (family_arbiter): xác nhận chéo theo họ bằng chứng A/B/C. Chỉ dùng escapeHtml.
+    function renderArbiterSummary(data) {
+        const arb = data && data.arbiter;
+        if (!arb) return '';
+        if (arb.error || !arb.families) return `<div class="alert alert-warning"><i class="fas fa-triangle-exclamation me-1"></i>${escapeHtml(arb.error || 'Không có kết quả trọng tài theo họ.')}</div>`;
+        const color = LEVEL_COLOR[arb.level] || '#94a3b8';
+        const LEVEL_NAME = { danger: 'NGUY HIỂM', warning: 'ĐÁNG NGỜ', caution: 'CẦN LƯU Ý', safe: 'AN TOÀN', unknown: 'CHƯA ĐỦ BẰNG CHỨNG' };
+        const famHtml = arb.families.map(f => {
+            if (!f.available) return `
+                <div class="mb-3"><div class="d-flex justify-content-between small text-light"><span>${escapeHtml(f.label)}</span><span class="badge bg-secondary">Vắng mặt</span></div>
+                <div class="small" style="opacity:.6;">${escapeHtml((f.notes || [])[0] || '')} — không tính là sạch</div></div>`;
+            const pct = Math.round(f.score * 100), c = f.strength === 'strong' ? '#f43f5e' : f.over ? '#fb923c' : '#4ade80';
+            const tag = f.strength === 'strong' ? 'Vượt ngưỡng mạnh' : f.over ? 'Vượt ngưỡng' : 'Dưới ngưỡng';
+            const caps = (f.evidence || []).filter(e => e.capability).slice(0, 8)
+                .map(e => `<span class="badge me-1 mb-1" style="background:rgba(255,255,255,.08);color:#e2e8f0;font-weight:500;">${escapeHtml(e.capability)}</span>`).join('');
+            return `
+                <div class="mb-3"><div class="d-flex justify-content-between small text-light"><span>${escapeHtml(f.label)}${f.partial ? ' <span class="text-warning">(cận dưới)</span>' : ''}</span>
+                    <span><span class="badge" style="background:${c}33;color:${c};">${tag}</span> ${f.score.toFixed(2)}${f.raw_score != null && f.raw_score !== f.score ? ` <span style="opacity:.55;">(gốc ${f.raw_score.toFixed(2)})</span>` : ''}</span></div>
+                <div style="position:relative;height:8px;background:rgba(255,255,255,.1);border-radius:4px;margin-top:4px;">
+                    <div style="height:8px;width:${Math.min(100, pct)}%;background:${c};border-radius:4px;"></div>
+                    <div title="Ngưỡng ${f.threshold}" style="position:absolute;top:-3px;left:${f.threshold * 100}%;width:2px;height:14px;background:#fff;opacity:.8;"></div>
+                    <div title="Ngưỡng mạnh ${f.strong_threshold}" style="position:absolute;top:-3px;left:${f.strong_threshold * 100}%;width:2px;height:14px;background:#fff;opacity:.4;"></div>
+                </div>${caps ? `<div class="mt-2">${caps}</div>` : ''}</div>`;
+        }).join('');
+        const reasons = (arb.reasons || []).map(r => `<li class="list-group-item bg-transparent border-secondary text-white small">${escapeHtml(r)}</li>`).join('');
+        const ctxItems = (arb.context_items || []).map(c => `<span class="badge me-1 mb-1" style="background:${c.delta < 0 ? '#4ade8033' : c.delta > 0 ? '#fb923c33' : 'rgba(255,255,255,.08)'};color:#e2e8f0;font-weight:500;">${escapeHtml(c.label)} ${c.delta > 0 ? '+' : ''}${Number(c.delta).toFixed(2)}${c.note ? ' (' + escapeHtml(c.note) + ')' : ''}</span>`).join('');
+        const ctxHtml = arb.context_applied ? `<div class="small text-light mb-2"><span style="opacity:.7;">Ngữ cảnh cài đặt:</span> ${ctxItems || '<span style="opacity:.6;">không có yếu tố nào điều chỉnh điểm</span>'}${(arb.context_unknown || []).length ? `<div style="opacity:.5;">Chưa có thông tin: ${(arb.context_unknown || []).length}/5 yếu tố (nguồn cài và thời gian dùng cần đọc từ thiết bị)</div>` : ''}</div>` : '';
+        const tm = arb.thresholds_meta || {};
+        const calibHtml = arb.thresholds_calibrated
+            ? `<div class="text-success small"><i class="fas fa-circle-check me-1"></i>Ngưỡng họ ${escapeHtml((tm.calibrated_families || []).join(', '))} đã hiệu chỉnh trên ${escapeHtml(String(tm.n_benign == null ? '?' : tm.n_benign))} ứng dụng sạch (${escapeHtml(tm.benign_source || '')}); các họ còn lại dùng giá trị đề xuất.</div>`
+            : '<div class="text-warning small"><i class="fas fa-circle-info me-1"></i>Ngưỡng là giá trị đề xuất, chưa hiệu chỉnh trên tập ứng dụng sạch.</div>';
+        return `
+        <div class="p-3 rounded-3" style="background:${color}0f;border:1px solid ${color}66;">
+            <h6 class="text-white mb-3"><i class="fas fa-code-branch me-2"></i> Tầng 5 — Xác nhận chéo theo họ bằng chứng</h6>
+            <div class="row g-3 align-items-center">
+                <div class="col-md-4 text-center">
+                    <div style="font-size:1.6rem;font-weight:900;line-height:1.1;color:${color};">${LEVEL_NAME[arb.level] || '—'}</div>
+                    <div class="text-light small mt-1" style="opacity:.7;">${(arb.families_over || []).length}/3 HỌ BẰNG CHỨNG VƯỢT NGƯỠNG</div>
+                    <div class="fw-bold mt-2 small" style="color:${color};">${escapeHtml(arb.verdict)}</div>
+                    ${arb.action ? `<div class="small text-light mt-2" style="opacity:.85;"><i class="fas fa-hand-point-right me-1"></i>${escapeHtml(arb.action)}</div>` : ''}
+                </div>
+                <div class="col-md-8">
+                    ${famHtml}
+                    ${ctxHtml}
+                    ${calibHtml}
+                </div>
+            </div>
+            <ul class="list-group list-group-flush mt-3">${reasons}</ul>
         </div>`;
     }
 

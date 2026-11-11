@@ -1,0 +1,4 @@
+{
+  "_ghi_chu": "Danh sach SHA-256 chung chi ky cua nha phat trien DA BIET (nhom tu kiem chung va them vao). De rong thi yeu to 'chu ky da biet' duoc coi la CHUA CO THONG TIN, khong dieu chinh diem. Lay SHA-256 tu phan 'Chu ky' trong bao cao quet hoac bang apksigner verify --print-certs.",
+  "signers": []
+}

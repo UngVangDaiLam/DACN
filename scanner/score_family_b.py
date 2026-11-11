@@ -27,7 +27,8 @@ sys.path.insert(0, ROOT)
 from scanner.family_scores import score_family_b  # noqa: E402
 
 FIELDS = ["sha256", "package_name", "label", "available", "score_b", "n_capabilities",
-          "capabilities", "notes", "error", "seconds"]
+          "capabilities", "notes", "error", "seconds",
+          "observed_score_b", "status_b"]
 THRESHOLDS = (0.1, 0.2, 0.3, 0.4, 0.5)
 BENIGN = "Benign"
 
@@ -137,6 +138,7 @@ def run(a, analyze=None):
             new += 0 if from_cache else 1
             r = score_family_b(l2, l3)
             row.update(available=r["available"], score_b=r["score"],
+                       observed_score_b=r.get("observed_score"), status_b=r.get("status", ""),
                        n_capabilities=len(r["evidence"]),
                        capabilities=json.dumps([e["capability"] for e in r["evidence"]]),
                        notes=" | ".join(r["notes"]))

@@ -119,6 +119,20 @@ def _analyze_in_worker(path, filename):
         verdict.update(verdict="CHƯA ĐỦ BẰNG CHỨNG — cần kiểm tra thêm",
                        level="unknown", final_score=None)
     result["verdict"] = verdict
+    # Tang 5 (phuong phap chinh cua de cuong): xac nhan cheo theo ho bang chung A/B/C.
+    # CHI THEM khoi 'arbiter'; khong doi 'verdict' (combine_verdict) va khong dung no lam dau vao.
+    try:
+        from scanner.family_arbiter import arbitrate, build_context
+        from scanner.family_scores import score_family_b
+        family_b = deep.get("family_b") or score_family_b(deep["layer2"], deep["layer3"])
+        # Ngu canh lay tu bao cao tinh; nguon cai/thoi gian dung can ADB (device=...) - chua co.
+        arbiter = arbitrate(result if reliable else None, family_b, None,
+                            context=build_context(deep))
+        if incomplete and arbiter["level"] == "safe":
+            arbiter.update(level="unknown", verdict="CHƯA ĐỦ BẰNG CHỨNG — cần kiểm tra thêm")
+        result["arbiter"] = arbiter
+    except Exception as exc:
+        result["arbiter"] = {"error": f"Không tính được trọng tài theo họ ({type(exc).__name__})."}
     result["apk_executed"] = False
     _emit_worker_progress("report_started", "Đang tổng hợp kết quả và bằng chứng")
     return result
