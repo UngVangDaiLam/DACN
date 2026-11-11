@@ -165,38 +165,166 @@ document.addEventListener('DOMContentLoaded', function() {
         const resultDiv = document.getElementById('resultContainer');
         const isApk = type === 'apk';
 
-        // Màn hình chạy: terminal luôn tối. Với APK, nhật ký là nhật ký thật của máy chủ (/api/scan-log).
-        resultDiv.innerHTML = `
-            <div class="terminal w-100 p-4 d-flex flex-column" style="min-height: 440px;">
-                <div class="run-head">
-                    <span class="text-white fw-semibold"><i class="fas fa-circle-notch fa-spin me-2" style="color: var(--accent);"></i>Đang phân tích ${isApk ? 'APK' : 'CSV'}</span>
-                    <span class="text-warning fw-semibold" id="scanElapsed">0 giây</span>
-                </div>
-                <div class="run-bar is-busy mb-3"><div></div></div>
-                <div id="scanLog" class="flex-grow-1" style="overflow-y: auto; max-height: 340px;">
-                    <div class="mb-1"><span class="text-light">[SYSTEM]</span> Bắt đầu quét: <strong class="text-white">${escapeHtml(file.name)}</strong></div>
-                </div>
-            </div>
-        `;
+        const journeySteps = [
+            ['fa-folder-open', 'Tệp APK', 'Sẵn sàng'],
+            ['fa-computer', 'Máy phân tích', 'Tiếp nhận tệp'],
+            ['fa-box-open', 'Kiểm tra gói', 'Cấu trúc APK'],
+            ['fa-brain', 'Tầng 1 · AI', 'Đặc trưng và mô hình'],
+            ['fa-magnifying-glass-chart', 'Tầng 2 · Kỹ thuật', 'Mã và tài nguyên'],
+            ['fa-code-branch', 'Tầng 3 · API', 'API trong cùng hàm'],
+            ['fa-file-circle-check', 'Báo cáo', 'Kết quả và bằng chứng']
+        ];
+
+        if (isApk) {
+            resultDiv.innerHTML = `
+                <div class="scan-journey" id="scanJourney" data-stage="1" aria-live="polite">
+                    <div class="scan-journey-head">
+                        <div><span class="scan-kicker"><i class="fas fa-wave-square"></i> Tiến trình phân tích thật</span>
+                            <h2>Hành trình của tệp APK</h2></div>
+                        <span class="scan-elapsed" id="scanElapsed">0 giây</span>
+                    </div>
+                    <div class="scan-file"><i class="fas fa-file-zipper"></i><span>${escapeHtml(file.name)}</span><strong id="scanStageCount">Bước 2 / 7</strong></div>
+                    <div class="scan-flow" id="scanFlow">
+                        <svg class="scan-flow-lines" id="scanFlowLines" aria-hidden="true"></svg>
+                        <div class="scan-flow-grid">
+                            ${journeySteps.map((step, index) => `
+                                <div class="scan-node${index === 0 ? ' is-done' : index === 1 ? ' is-active' : ''}" data-step="${index}">
+                                    <span class="scan-node-icon"><i class="fas ${step[0]}"></i><b>${index + 1}</b></span>
+                                    <strong>${step[1]}</strong><small>${step[2]}</small>
+                                </div>`).join('')}
+                        </div>
+                        <div class="scan-packet" id="scanPacket" aria-hidden="true"><i class="fas fa-file"></i><span>APK</span></div>
+                    </div>
+                    <div class="scan-live"><span class="scan-live-icon"><i class="fas fa-circle-notch fa-spin"></i></span>
+                        <div><strong id="scanLiveTitle">Đang chuyển tệp vào máy phân tích</strong><p id="scanLiveMessage">Tệp được lưu cục bộ để bắt đầu phân tích tĩnh; hệ thống không thực thi APK.</p></div>
+                    </div>
+                    <div class="scan-trust"><i class="fas fa-shield-halved"></i> Chỉ chuyển bước khi worker phát mốc xử lý thật.</div>
+                </div>`;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="terminal w-100 p-4 d-flex flex-column" style="min-height: 440px;">
+                    <div class="run-head"><span class="text-white fw-semibold"><i class="fas fa-circle-notch fa-spin me-2" style="color: var(--accent);"></i>Đang phân tích CSV</span>
+                        <span class="text-warning fw-semibold" id="scanElapsed">0 giây</span></div>
+                    <div class="run-bar is-busy mb-3"><div></div></div>
+                    <div id="scanLog" class="flex-grow-1"><div class="mb-1"><span class="text-light">[SYSTEM]</span> Bắt đầu quét: <strong class="text-white">${escapeHtml(file.name)}</strong></div></div>
+                </div>`;
+        }
 
         const log = document.getElementById('scanLog');
         const elapsedEl = document.getElementById('scanElapsed');
-        const LIVE_COLORS = { SUCCESS: '#4ade80', WARN: '#facc15', ERROR: '#f87171', INFO: '#94a3b8' };
+        const nodeStates = Array(7).fill('waiting');
+        let journeyStage = 1;
+        let journeyRoutes = [];
+        let packetAnimation = 0;
 
         function addLog(text) {
+            if (!log) return;
             const time = new Date().toLocaleTimeString('en-US', {hour12: false});
             log.innerHTML += `<div class="mb-1"><span class="text-light">[${time}]</span> ${escapeHtml(text)}</div>`;
             log.scrollTop = log.scrollHeight;
         }
+
+        function layoutJourney() {
+            const flow = document.getElementById('scanFlow');
+            const svg = document.getElementById('scanFlowLines');
+            if (!flow || !svg) return;
+            const bounds = flow.getBoundingClientRect();
+            const boxes = [...flow.querySelectorAll('.scan-node-icon')].map(icon => {
+                const b = icon.getBoundingClientRect();
+                return { x: b.left - bounds.left + b.width / 2, y: b.top - bounds.top + b.height / 2,
+                    l: b.left - bounds.left, r: b.right - bounds.left, t: b.top - bounds.top, bottom: b.bottom - bounds.top };
+            });
+            svg.setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
+            svg.innerHTML = '<defs><marker id="scanArrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto"><path d="M1 1 L5.5 3.5 L1 6" fill="none" stroke="currentColor" stroke-width="1.3"/></marker></defs>';
+            journeyRoutes = [];
+            boxes.slice(0, -1).forEach((a, index) => {
+                const b = boxes[index + 1];
+                let d;
+                if (Math.abs(a.y - b.y) < 12) {
+                    const right = b.x > a.x;
+                    d = `M${right ? a.r + 6 : a.l - 6},${a.y} L${right ? b.l - 9 : b.r + 9},${b.y}`;
+                } else {
+                    const rightSide = a.x > bounds.width / 2;
+                    const lane = rightSide ? bounds.width - 8 : 8;
+                    d = `M${rightSide ? a.r + 6 : a.l - 6},${a.y} H${lane} V${b.y} H${rightSide ? b.r + 9 : b.l - 9}`;
+                }
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d); path.setAttribute('marker-end', 'url(#scanArrow)');
+                path.classList.add('scan-route'); svg.appendChild(path); journeyRoutes.push(path);
+            });
+            paintJourney(false);
+        }
+
+        function animatePacket(routeIndex) {
+            const packet = document.getElementById('scanPacket');
+            const path = journeyRoutes[routeIndex];
+            if (!packet || !path || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            cancelAnimationFrame(packetAnimation);
+            const start = performance.now(), length = path.getTotalLength();
+            packet.classList.add('is-moving');
+            function frame(now) {
+                const p = Math.min(1, (now - start) / 720), eased = p * p * (3 - 2 * p);
+                const point = path.getPointAtLength(length * eased);
+                packet.style.transform = `translate(${point.x - packet.offsetWidth / 2}px, ${point.y - packet.offsetHeight / 2}px)`;
+                packet.style.opacity = String(Math.min(1, p * 9, (1 - p) * 9));
+                if (p < 1) packetAnimation = requestAnimationFrame(frame);
+                else { packet.classList.remove('is-moving'); packet.style.opacity = '0'; }
+            }
+            packetAnimation = requestAnimationFrame(frame);
+        }
+
+        function paintJourney(movePacket) {
+            const journey = document.getElementById('scanJourney');
+            if (!journey) return;
+            journey.dataset.stage = String(journeyStage);
+            const nodes = [...journey.querySelectorAll('.scan-node')];
+            nodes.forEach((node, index) => {
+                node.className = 'scan-node';
+                let state = nodeStates[index];
+                if (state === 'waiting') state = index < journeyStage ? 'done' : index === journeyStage ? 'active' : 'waiting';
+                node.classList.add('is-' + state);
+                const badge = node.querySelector('b');
+                badge.textContent = state === 'done' ? '✓' : state === 'error' ? '!' : state === 'skipped' ? '–' : index + 1;
+            });
+            journeyRoutes.forEach((route, index) => {
+                route.classList.toggle('is-done', index < journeyStage);
+                route.classList.toggle('is-active', index === journeyStage - 1);
+            });
+            const count = document.getElementById('scanStageCount');
+            if (count) count.textContent = `Bước ${Math.min(7, journeyStage + 1)} / 7`;
+            if (movePacket && journeyStage > 0) animatePacket(journeyStage - 1);
+        }
+
+        function setJourney(stage, title, message, state) {
+            const previous = journeyStage;
+            journeyStage = Math.max(journeyStage, stage);
+            if (state) nodeStates[stage] = state;
+            const titleEl = document.getElementById('scanLiveTitle');
+            const messageEl = document.getElementById('scanLiveMessage');
+            if (titleEl) titleEl.textContent = title;
+            if (messageEl) messageEl.textContent = message;
+            paintJourney(journeyStage > previous);
+        }
+
+        const progressMap = {
+            preflight_started: [2, 'Đang kiểm tra gói APK'],
+            preflight_completed: [2, 'APK đã vượt qua kiểm tra đầu vào'],
+            preflight_failed: [2, 'APK không hợp lệ', 'error'],
+            layer1_started: [3, 'Tầng 1 đang trích đặc trưng và chạy mô hình'],
+            layer1_completed: [3, 'Tầng 1 đã hoàn tất'],
+            layer1_unavailable: [3, 'Tầng 1 chưa xác định · tiếp tục các tầng độc lập', 'skipped'],
+            layers_started: [4, 'Tầng 2 và Tầng 3 đang đối chiếu bằng chứng'],
+            layers_completed: [5, 'Tầng 2 và Tầng 3 đã hoàn tất'],
+            report_started: [6, 'Đang tổng hợp báo cáo bằng chứng']
+        };
 
         const startedAt = Date.now();
         const clock = setInterval(() => {
             if (elapsedEl) elapsedEl.textContent = Math.round((Date.now() - startedAt) / 1000) + ' giây';
         }, 1000);
 
-        // Chỉ hiện nhật ký sau khi dòng "BẮT ĐẦU PHÂN TÍCH" của đúng file này xuất hiện,
-        // để không lẫn nhật ký của lần quét trước.
         let sawStart = false;
+        const seenProgress = new Set();
         async function pollLive() {
             if (!isApk) return;
             try {
@@ -204,30 +332,47 @@ document.addEventListener('DOMContentLoaded', function() {
                 const d = await r.json();
                 const lines = d.lines || [];
                 if (!sawStart) sawStart = lines.some(l => l.includes(file.name));
-                if (!sawStart || !log) return;
-                log.innerHTML = lines.map(line => {
-                    let color = '#8fe0b0';
-                    for (const [key, c] of Object.entries(LIVE_COLORS)) {
-                        if (line.includes(`[${key}]`)) { color = c; break; }
-                    }
-                    return `<div style="color:${color};margin-bottom:2px;">${escapeHtml(line)}</div>`;
-                }).join('');
-                log.scrollTop = log.scrollHeight;
+                if (!sawStart) return;
+                lines.forEach((line, index) => {
+                    const marker = 'PROGRESS::';
+                    const at = line.indexOf(marker);
+                    if (at < 0) return;
+                    const raw = line.slice(at + marker.length);
+                    const split = raw.indexOf('::');
+                    if (split < 0) return;
+                    const key = `${index}:${raw}`;
+                    if (seenProgress.has(key)) return;
+                    seenProgress.add(key);
+                    const stageName = raw.slice(0, split), serverMessage = raw.slice(split + 2);
+                    const mapped = progressMap[stageName];
+                    if (mapped) setJourney(mapped[0], mapped[1], serverMessage, mapped[2]);
+                });
             } catch (e) { /* bỏ qua lỗi mạng tạm thời */ }
         }
         const livePoll = setInterval(pollLive, 700);
 
         const formData = new FormData();
         formData.append('file', file);
+        if (isApk) window.addEventListener('resize', layoutJourney);
 
         try {
-            addLog('Đang tải file lên máy chủ…');
+            if (isApk) {
+                setJourney(1, 'Đang chuyển tệp vào máy phân tích', 'Tệp được lưu cục bộ; APK không được cài đặt hoặc thực thi.');
+                requestAnimationFrame(layoutJourney);
+            } else addLog('Đang tải file lên máy chủ…');
 
             const res = await fetch(endpoint, { method: 'POST', body: formData });
             const data = await res.json();
 
             // Kiểm tra lỗi từ server
             if (!res.ok || data.success === false) {
+                if (isApk) {
+                    const failed = data.ai_result || {};
+                    const timeout = failed.analysis_status === 'timeout';
+                    setJourney(Math.min(journeyStage, 6), timeout ? 'Đã dừng vì quá thời gian' : 'Phân tích không hoàn tất',
+                        data.error || 'Không có kết quả đầy đủ từ worker.', 'error');
+                    await new Promise(resolve => setTimeout(resolve, 700));
+                }
                 const resultDiv = document.getElementById('resultContainer');
                 resultDiv.innerHTML = `
                     <div class="callout callout--danger">
@@ -242,7 +387,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.task_id) window._currentTaskId = data.task_id;
 
             if (type === 'csv') displayCsvResult(data);
-            else displayApkResult(data);
+            else {
+                const report = data.ai_result || data;
+                if (report.analysis_incomplete) nodeStates[6] = 'skipped';
+                setJourney(6, report.analysis_incomplete ? 'Báo cáo đã hoàn tất một phần' : 'Báo cáo đã hoàn tất',
+                    report.analysis_incomplete ? 'Các phần chưa đủ dữ liệu được ghi là chưa xác định.' : 'Kết quả và bằng chứng đã sẵn sàng để xem.',
+                    report.analysis_incomplete ? 'skipped' : 'done');
+                await new Promise(resolve => setTimeout(resolve, 700));
+                displayApkResult(data);
+            }
 
         } catch (err) {
             const resultDiv = document.getElementById('resultContainer');
@@ -255,7 +408,10 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             clearInterval(clock);
             clearInterval(livePoll);
+            cancelAnimationFrame(packetAnimation);
+            window.removeEventListener('resize', layoutJourney);
         }
+
     }
 
     function displayCsvResult(data) {
@@ -767,42 +923,64 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderCodeLayers(data) {
-        if (data.deep_error) return `<div class="alert alert-warning">${escapeHtml(data.deep_error)}</div>`;
+        const errorBanner = data.deep_error ? `<div class="alert alert-warning">${escapeHtml(data.deep_error)}</div>` : '';
         const deep = data.deep;
-        if (!deep || !deep.layer2 || !deep.layer3) return '';
+        if (!deep || !deep.layer2 || !deep.layer3) return errorBanner;
         const origins = {application: 'Mã ứng dụng', third_party: 'Thư viện (theo tiền tố)', unknown: 'Chưa xác định nguồn mã'};
         const api = c => escapeHtml(`${c.class_name}->${c.method_name}${c.descriptor} @${c.offset}`);
         const evidence = f => {
             const calls = f.calls || [];
             const sources = f.sources || [], sinks = f.sinks || [];
-            return `<div class="font-monospace small text-info" style="overflow-wrap:anywhere;">${escapeHtml(`${f.class_name}->${f.method_name}${f.descriptor}`)}</div>
+            return `<div class="font-monospace small text-info" style="overflow-wrap:anywhere;">${escapeHtml(f.file_path || (f.class_name ? `${f.class_name}->${f.method_name}${f.descriptor}` : 'Chỉ báo cấu trúc lớp'))}</div>
                 <div class="small text-light mb-2">${escapeHtml(origins[f.origin] || origins.unknown)}</div>
                 ${calls.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('')}
                 ${sources.length ? '<div class="small text-warning mt-2">API nhạy cảm:</div>' + sources.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('') : ''}
                 ${sinks.length ? '<div class="small text-warning mt-2">API mạng:</div>' + sinks.map(c => `<div class="small text-light" style="overflow-wrap:anywhere;">${api(c)}</div>`).join('') : ''}
-                ${(f.strings || []).map(s => `<div class="small text-light mt-2" style="overflow-wrap:anywhere;">Chuỗi @${s.offset}, ${s.length} ký tự: <code>${escapeHtml(s.value)}${s.preview_truncated ? '…' : ''}</code></div>`).join('')}`;
+                ${(f.matches || []).map(s => `<div class="small text-light" style="overflow-wrap:anywhere;">YARA ${escapeHtml(s.identifier)} @${s.offset}: <code>${escapeHtml(s.value)}</code></div>`).join('')}
+                ${(f.strings || []).map(s => `<div class="small text-light mt-2" style="overflow-wrap:anywhere;">Chuỗi ${s.offset == null ? '(trường URI)' : '@' + s.offset}: <code>${escapeHtml(s.value)}${s.preview_truncated ? '…' : ''}</code></div>`).join('')}
+                ${f.string_proof ? `<div class="small text-light mt-2" style="overflow-wrap:anywhere;">Chuỗi gốc <code>${escapeHtml(f.string_proof.original)}</code> → <code>${escapeHtml(f.string_proof.decoded)}</code> (đảo ngược, @${escapeHtml(f.string_proof.literal_offset)}). Dùng tại <code>${escapeHtml(f.string_proof.use_api)}</code> @${escapeHtml(f.string_proof.use_offset)}.</div>` : ''}
+                ${f.flow_confirmed === false ? '<div class="small text-warning mt-2">Chỉ báo tĩnh; chưa xác nhận luồng dữ liệu hoặc thực thi.</div>' : ''}
+                <div class="small text-light mt-1">Mã bằng chứng: ${escapeHtml(f.evidence_id || '')}</div>`;
         };
         const card = (title, layer) => {
             const counts = layer.counts_by_origin || {}, findings = layer.findings || [];
             const artifacts = layer.artifacts;
-            const files = artifacts ? [...artifacts.embedded_payloads, ...artifacts.native_libs] : [];
+            const files = artifacts ? [...(artifacts.embedded_payloads || []), ...(artifacts.native_libs || [])] : [];
+            const statuses = {completed: 'Hoàn tất phạm vi luật', partial: 'Chưa đầy đủ', unavailable: 'Không khả dụng'};
             return `<div class="col-lg-6"><div class="card p-3 h-100">
                 <h5 class="text-info">${title}</h5>
+                <div class="small text-light mb-2">${escapeHtml(statuses[layer.status] || layer.status)} · phiên bản ${escapeHtml(layer.version || 'cũ')}
+                    · Điểm chỉ báo: ${layer.score == null ? 'Chưa đủ dữ liệu' : layer.score + '/100'} (không phải xác suất mã độc)</div>
                 <div class="text-light small mb-2">${layer.finding_count} phát hiện trong ${layer.methods_scanned} hàm đã kiểm tra.
-                    ${layer.status === 'partial' ? `<span class="text-warning">Phân tích chưa đầy đủ (${layer.analysis_errors} lỗi).</span>` : 'Đã phân tích xong.'}</div>
+                    ${layer.status !== 'completed' ? `<span class="text-warning">${layer.analysis_errors || 0} lỗi/giới hạn phân tích.</span>` : ''}</div>
                 <div class="small text-light mb-3">Mã ứng dụng: ${counts.application || 0} · Thư viện: ${counts.third_party || 0} · Chưa xác định: ${counts.unknown || 0}</div>
                 ${artifacts ? `<div class="small text-light mb-2">Entropy DEX: ${artifacts.dex_entropy} · Tỷ lệ lớp tên ngắn: ${Math.round(artifacts.obfuscated_class_ratio * 100)}%</div>
+                    <div class="small text-light mb-2">YARA: ${escapeHtml(artifacts.yara_status || 'Chưa chạy')} · ${artifacts.counts?.yara_matches || 0} kết quả khớp. Các khớp trong DEX không chứng minh lời gọi được thực thi.</div>
                     <details class="small text-light mb-3"><summary>Payload và thư viện native được liệt kê (${files.length})</summary>${files.map(p => `<div style="overflow-wrap:anywhere;">${escapeHtml(p)}</div>`).join('') || 'Không có mục được liệt kê.'}</details>` : ''}
                 <details><summary class="text-white">Xem bằng chứng (${findings.length}${layer.truncated ? '/' + layer.finding_count : ''})</summary>
                     <div style="max-height:480px;overflow:auto;">${findings.map(f => `<div class="border-bottom border-secondary py-3">${sevBadge(f.severity)}<strong class="text-white small">${escapeHtml(f.title)}</strong>${evidence(f)}</div>`).join('') || '<p class="small text-light mt-2">Chưa tìm thấy dấu hiệu trong phạm vi luật hiện có.</p>'}</div>
                 </details>
                 ${layer.truncated ? '<div class="small text-warning">Danh sách bằng chứng đã được giới hạn; tổng số phát hiện vẫn được thống kê.</div>' : ''}
+                ${(layer.issues || []).length ? `<details class="small text-warning mt-2"><summary>Lỗi và giới hạn</summary>${layer.issues.map(e => `<div style="overflow-wrap:anywhere;">${escapeHtml(e.component)}: ${escapeHtml(e.reason)}</div>`).join('')}</details>` : ''}
                 <ul class="small text-light mt-3 mb-0">${layer.limitations.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>
             </div></div>`;
         };
-        return `<div class="text-light small mb-3">Tầng 2 và 3 cung cấp bằng chứng để kiểm tra, chưa được cộng thêm vào điểm rủi ro tổng hợp.</div>
+        return `${errorBanner}<div class="text-light small mb-3">Tầng 2 và 3 cùng thuộc họ bằng chứng hành vi trong mã; điểm chỉ báo chưa cộng vào bộ trọng tài cũ.</div>
+            <button type="button" class="btn btn-sm btn-outline-info mb-3" onclick="downloadCodeLayers()">Tải bằng chứng tầng 2/3 (JSON)</button>
             <div class="row g-3">${card('Tầng 2 — Che giấu và nạp mã', deep.layer2)}${card('Tầng 3 — Nguy cơ rò rỉ dữ liệu', deep.layer3)}</div>`;
     }
+
+    window.downloadCodeLayers = function() {
+        const data = window._lastScanData;
+        if (!data?.deep) return;
+        const report = {sha256: data.sha256 || data.deep.info?.sha256,
+            layer2: data.deep.layer2, layer3: data.deep.layer3,
+            analysis_seconds: data.deep.analysis_seconds};
+        const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type: 'application/json'}));
+        const link = document.createElement('a');
+        link.href = url; link.download = 'layers_' + String(report.sha256 || 'report').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) + '.json';
+        link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
 
     function renderDeepSummary(data) {
         const deep = data.deep, v = data.verdict;
@@ -825,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="p-3 rounded-3" style="background:${color}0f;border:1px solid ${color}66;">
             <div class="row g-3 align-items-center">
                 <div class="col-md-4 text-center">
-                    <div style="font-size:3.6rem;font-weight:900;line-height:1;color:${color};">${v.final_score}</div>
+                    <div style="font-size:3.6rem;font-weight:900;line-height:1;color:${color};">${v.final_score == null ? '—' : v.final_score}</div>
                     <div class="text-light small" style="opacity:.7;">ĐIỂM RỦI RO TỔNG HỢP /100</div>
                     <div class="fw-bold mt-2" style="color:${color};">${escapeHtml(v.verdict)}</div>
                 </div>
@@ -1003,6 +1181,16 @@ window.exportToPDF = function() {
       ${riskCombosHtml}
     </div>`;
 
+    const sectionLayers = d.deep ? ['layer2', 'layer3'].map((key, index) => {
+        const layer = d.deep[key];
+        if (!layer) return '';
+        return `<div style="${secStyle}"><div style="${titleStyle}">Tầng ${index + 2} — ${index === 0 ? 'Che giấu và nạp mã' : 'Nguy cơ rò rỉ dữ liệu'}</div>
+            <div>Trạng thái: ${esc(layer.status)} · phiên bản ${esc(layer.version || '')} · ${layer.finding_count} phát hiện</div>
+            <div>Điểm chỉ báo: ${layer.score == null ? 'Chưa đủ dữ liệu' : layer.score + '/100'} — không phải xác suất mã độc.</div>
+            ${(layer.findings || []).slice(0, 10).map(f => `<div style="font-size:10px;margin-top:8px;overflow-wrap:anywhere;"><strong>${esc(f.title)}</strong><br>${esc(f.file_path || (f.class_name ? f.class_name + '->' + f.method_name + f.descriptor : 'Chỉ báo cấu trúc'))}<br>Mã bằng chứng: ${esc(f.evidence_id || '')}</div>`).join('')}
+            <div style="font-size:10px;margin-top:8px;">PDF liệt kê tối đa 10 phát hiện/tầng; tải JSON để xem toàn bộ bằng chứng được lưu. API cùng hàm chưa chứng minh rò rỉ dữ liệu thực tế.</div></div>`;
+    }).join('') : '';
+
     // Footer
     const footer = `<div style="text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;">
       DroidGuard AI Core System &bull; Báo cáo tự động &bull; ${new Date().toLocaleString('vi-VN')}
@@ -1029,7 +1217,7 @@ window.exportToPDF = function() {
           <strong style="color:#0284c7;">Android Malware Detection System</strong>
         </div>
       </div>
-      ${sectionApp}${sectionAI}${sectionCols}${sectionRisk}${footer}`;
+      ${sectionApp}${sectionAI}${sectionCols}${sectionRisk}${sectionLayers}${footer}`;
 
     document.body.appendChild(wrapper);
 

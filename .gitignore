@@ -51,3 +51,6 @@ scan_history.json
 
 # File thuc thi
 *.exe
+# Local evidence and sample datasets (may contain APK strings and metadata)
+/reports/
+/samples/

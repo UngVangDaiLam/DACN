@@ -44,6 +44,12 @@ def analyze(methods, strings=()):
 
 
 class CodeLayerTests(unittest.TestCase):
+    def test_class_new_instance_is_reflective_instantiation(self):
+        report = analyze([Method('Lorg/example/Main;', 'load',
+                                 [call('Ljava/lang/Class;', 'newInstance')])])
+        self.assertEqual(report['layer2']['findings'][0]['rule_id'], 'reflection')
+        self.assertEqual(report['layer2']['findings'][0]['calls'][0]['method_name'], 'newInstance')
+
     def test_dynamic_loading_reports_caller_and_offset(self):
         report = analyze([Method("Lorg/example/Main;", "load", [DEX])])
         hit = report["layer2"]["findings"][0]
