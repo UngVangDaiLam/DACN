@@ -17,7 +17,7 @@ services:
       - path: .env                  # doc luc chay; .env KHONG vao image (.dockerignore da loai)
         required: false
     environment:
-      FLASK_DEBUG: "1"              # bat debugger + reloader (CHI trong compose dev)
+      FLASK_DEBUG: "0"              # bat debugger + reloader (CHI trong compose dev)
       APP_HOST: "0.0.0.0"           # trong container phai nghe 0.0.0.0 thi port publish moi vao duoc
       SCAN_FOLDER: /data/scans      # file quet nam ngoai repo, trong volume "scans"
       PYTHONUNBUFFERED: "1"         # log hien ngay trong docker compose logs
@@ -29,6 +29,7 @@ services:
       - .:/app                      # bind mount ma nguon -> sua la reloader thay (stat polling)
       - ./models:/app/models:ro     # model chi doc, container khong ghi de duoc
       - scans:/data/scans           # SCAN_FOLDER: volume dat ten, ngoai repo
+      - layer4_ssh:/run/layer4_ssh:ro   # khoa SSH + known_hosts cho Tang 4 (chi doc)
     # Che cac thu muc cua host khong duoc lo vao container (mau ma doc, venv Windows, file quet cu).
     tmpfs:
       - /app/dataset
@@ -37,3 +38,6 @@ services:
 
 volumes:
   scans:
+  layer4_ssh:
+    external: true
+    name: androwall_layer4_ssh

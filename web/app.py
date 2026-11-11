@@ -39,6 +39,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scanner.detect_and_classify import MalwareDetector
 from scanner.deep_analysis import analyze_deep, combine_verdict
 from scanner.meta_arbiter import arbitrate_from_results, UNKNOWN as T5_UNKNOWN
+from web.layer4_jobs import Layer4Jobs
+
+try:
+    layer4_jobs = Layer4Jobs(os.environ.get("ANDROWALL_LAYER4_COMMAND"), analysis_results)
+except ValueError:
+    print("Tầng 4: cấu hình ANDROWALL_LAYER4_COMMAND không hợp lệ.")
+    layer4_jobs = Layer4Jobs(None, analysis_results)
  
 import numpy as np
  
@@ -470,6 +477,9 @@ def scan_apk():
              + (f" — {t5['reason']}" if t5.get('reason') else ''),
              level='ERROR' if t5.get('error') else 'SUCCESS')
 
+        # Tầng 4 nhận chính APK đã lưu ở đầu lượt quét.
+        layer4_task_id = layer4_jobs.submit(filepath, hashlib.sha256(file_bytes).hexdigest())
+
         # 5. (Tuỳ chọn) đối chiếu MobSF — chỉ khi đã cấu hình API key
         task_id = None
         if API_KEY:
@@ -487,6 +497,7 @@ def scan_apk():
             'success': True,
             'ai_result': ai_result,
             'task_id': task_id,
+            'layer4_task_id': layer4_task_id,
             'message': 'Đã phân tích xong.'
         })
 
